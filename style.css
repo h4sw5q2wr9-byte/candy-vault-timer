@@ -27,3 +27,8 @@ main{max-width:1040px;padding-top:max(20px,env(safe-area-inset-top));padding-bot
 @media(max-width:360px){main{padding-inline:8px}.terminal-frame{padding:10px 10px 0}.terminal{padding-inline:13px}.terminal-top .rip-word{font-size:32px}.status-wrap{font-size:8px}.heading{font-size:18px}.grave-time{font-size:20px}.grave-name{font-size:10px}.preset{height:147px}.duration{max-width:205px}.primary,.secondary{font-size:13px}.monitor-chin{font-size:6px}.music-line{max-width:78%}.music-pause{font-size:8px}.monitor-model{letter-spacing:0}}
 @media(max-height:620px) and (max-width:700px){.preset{height:137px}.terminal{padding-top:16px;padding-bottom:16px}.terminal-top{margin-bottom:14px}.setup-grid{gap:13px}.heading{margin-bottom:8px}.controls{margin-top:14px;padding-top:13px}.run-panel{min-height:194px}.monitor-chin{height:31px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}.screen-sweep{display:none}.powered .terminal{filter:none}.heading:after{opacity:.5}.overlay{backdrop-filter:none}}
+
+.settings .setting-help{margin:-4px 0 16px;font-size:11px;line-height:1.6;color:#c0a68b}
+
+@media(max-width:700px){main{--page-edge:12px;padding-top:max(10px,env(safe-area-inset-top));padding-bottom:max(18px,env(safe-area-inset-bottom));padding-left:max(var(--page-edge),env(safe-area-inset-left));padding-right:max(var(--page-edge),env(safe-area-inset-right))}}
+@media(max-width:360px){main{--page-edge:8px}}

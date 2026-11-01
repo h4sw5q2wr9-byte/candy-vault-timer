@@ -9,4 +9,7 @@ with sync_playwright() as p:
  page.set_viewport_size({'width':192,'height':192})
  page.add_style_tag(content='svg{width:192px;height:192px}')
  page.screenshot(path=str(root/'media-artwork-192.png'),omit_background=True)
+ page.set_viewport_size({'width':180,'height':180})
+ page.add_style_tag(content='svg{width:180px;height:180px}')
+ page.screenshot(path=str(root/'apple-touch-icon.png'),omit_background=True)
  browser.close()

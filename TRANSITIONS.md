@@ -43,3 +43,11 @@ Playback is 44.1 kHz stereo with a music content hint and requests to disable vo
 An original 5×7-grid pixel alphabet is embedded as WOFF. The timer uses its constant six-cell glyph advance with no negative letter spacing, and is centered by intrinsic text width. Browser checks measure text-range centers for 00:00, 11:11, and 999:59 across portrait widths. The minute and second editor uses equal grid columns around the colon.
 
 The outer casing and dark inset glass are built with CSS borders and shadows. Backgrounds use linear fills rather than the earlier page-level radial gradients. The screen has a low-opacity pixel/scanline overlay, a slow scan sweep, a cursor blink, and a brief startup animation. Reduced-motion mode disables moving effects.
+
+# Performance build and media titles
+
+Audio packets are stream-copied into clean Ogg containers, with conservative truncation after the last played sample. Every needed sample was verified identical in FFmpeg and Chromium. R.I.P. is copied unchanged. The ambience file now ends after the approved native loopEnd plus a decoder safety margin; its loopStart and loopEnd remain exactly the same.
+
+The hosted HTML contains only audio URLs. A deferred, separately cached runtime script starts decoding audio after the Enter gesture. Versioned URLs prevent mismatched cached scripts/audio on updates. The standalone HTML contains the same optimized files as base64 for offline use.
+
+Static media-title mode shows the configured duration followed by “timer”. It does not publish metadata or media position on each tick; play state, duration changes, seek, and pause/resume remain synchronized. Live mode publishes the title when its displayed second changes and refreshes the native progress snapshot at most every ten seconds outside state changes. Native media progress advances without frequent JavaScript snapshots. Repeated DOM text and document-title assignments are skipped when unchanged.

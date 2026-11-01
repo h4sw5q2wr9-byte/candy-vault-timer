@@ -12,8 +12,17 @@ with sync_playwright() as p:
  page=browser.new_page(viewport={'width':1280,'height':900})
  errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
  page.add_init_script('''window.__mediaActions={};window.__mediaPosition=null;if(navigator.mediaSession){const session=navigator.mediaSession;const register=session.setActionHandler.bind(session);session.setActionHandler=(action,handler)=>{window.__mediaActions[action]=handler;register(action,handler);};const position=session.setPositionState.bind(session);session.setPositionState=value=>{window.__mediaPosition=value;position(value);};}''')
- page.goto(f'http://127.0.0.1:{server.server_port}/index.html');page.screenshot(path=str(root/'welcome-preview.png'))
+ audio_requests=[];page.on('request',lambda r:audio_requests.append(r.url) if '/assets/audio/' in r.url else None)
+ page.goto(f'http://127.0.0.1:{server.server_port}/index.html')
+ assert page.title()=='The Candy Vault Timer'
+ assert page.locator('meta[name=apple-mobile-web-app-title]').get_attribute('content')=='The Candy Vault Timer'
+ assert page.locator('link[rel=apple-touch-icon]').get_attribute('href')=='./apple-touch-icon.png'
+ assert page.locator('link[rel=manifest]').get_attribute('href')=='./manifest.webmanifest'
+ assert not audio_requests,'Music must not delay first page render'
+ manifest=page.evaluate("async()=>await (await fetch('./manifest.webmanifest')).json()");assert manifest['name']=='The Candy Vault Timer'
+ page.screenshot(path=str(root/'welcome-preview.png'))
  page.click('#enter');page.wait_for_selector('#welcome[hidden]',state='attached',timeout=30000);page.evaluate('document.fonts.ready');page.wait_for_timeout(500)
+ assert len(audio_requests)==5,audio_requests
  page.screenshot(path=str(root/'desktop-preview.png'))
  print('Desktop:',page.evaluate('({context:ctx.state,paused:player.paused,stream:player.srcObject?.active,overflow:document.documentElement.scrollWidth>innerWidth})'))
  for width in [320,375,390,430,768,1440]:
@@ -36,6 +45,13 @@ with sync_playwright() as p:
  page.evaluate('run.wallStartedAt=Date.now()-(run.countdown-run.origin+5)*1000;scheduleRun();render()')
  assert page.evaluate("navigator.mediaSession.metadata.title==='00:10 remaining'")
  assert page.evaluate('Math.abs(window.__mediaPosition.position-5)<.1&&window.__mediaPosition.duration===15')
+ page.locator('.settings').evaluate('(node)=>node.open=true')
+ page.uncheck('#liveMediaTitle');assert page.evaluate("navigator.mediaSession.metadata.title==='00:15 timer'")
+ page.evaluate('window.__staticPosition=window.__mediaPosition;window.__oldTimer=ui.timer.textContent')
+ page.wait_for_timeout(1200)
+ assert page.evaluate("navigator.mediaSession.metadata.title==='00:15 timer'&&window.__staticPosition===window.__mediaPosition&&ui.timer.textContent!==window.__oldTimer")
+ assert page.evaluate("localStorage.getItem('candyVault.liveMediaTitle')==='false'")
+ page.check('#liveMediaTitle');page.locator('.settings').evaluate('(node)=>node.open=false')
  page.evaluate('window.__mediaActions.seekto({seekTime:2})')
  assert page.evaluate('Math.abs(run.deadline-runTime()-13)<.1')
  page.evaluate('window.__mediaActions.previoustrack()')
@@ -73,7 +89,7 @@ with sync_playwright() as p:
  page.evaluate('recoverAudio(true)');page.wait_for_timeout(200)
  assert page.evaluate("ctx.state==='running'&&!player.paused&&!run.paused")
  assert not errors,errors
- print('PASS: gravestone containment at 320/375/390/430/768/1440px, music-only idle pause and lock-at-zero, gradual ticking fade, full music gain, native media stream playing, audio graph signal, native pause/resume events, original 7s/17s cues, editable setup return, automatic RIP, repair recovery, real artwork decoding, finite media position, and media seek/minute controls; no page errors.')
+ print('PASS: gravestone containment at 320/375/390/430/768/1440px, music-only idle pause and lock-at-zero, gradual ticking fade, full music gain, native media stream playing, audio graph signal, native pause/resume events, original 7s/17s cues, editable setup return, automatic RIP, repair recovery, real artwork decoding, finite media position, and media seek/minute controls; no page errors; home-screen metadata, deferred cached audio, static-title persistence, and offline HTML playback.')
  page.set_viewport_size({'width':375,'height':667})
  page.fill('#minutes','20');page.fill('#seconds','0');page.click('#start');page.wait_for_function('run&&!run.returned&&!ui.start.disabled')
  page.evaluate('run.wallStartedAt=Date.now()-(run.countdown-run.origin+80)*1000;scheduleRun();render()')
@@ -86,6 +102,11 @@ with sync_playwright() as p:
   assert page.evaluate('''(()=>{const panel=document.querySelector('#runPanel').getBoundingClientRect(),timer=document.querySelector('#timer');return ['00:00','11:11','999:59'].every(value=>{timer.textContent=value;const range=document.createRange();range.selectNodeContents(timer);const digits=range.getBoundingClientRect();return Math.abs(panel.x+panel.width/2-digits.x-digits.width/2)<.75&&digits.width<=panel.width;});})()'''),f'Timer centering or width {width}'
  page.emulate_media(reduced_motion='reduce');assert page.evaluate("getComputedStyle(document.querySelector('.screen-sweep')).display==='none'")
  assert page.evaluate("document.fonts.check('20px \"Vault Pixels\"')")
+ page.locator('.settings').evaluate('(node)=>node.open=true');page.uncheck('#liveMediaTitle');page.reload();assert not page.locator('#liveMediaTitle').is_checked()
+ assert page.title()=='The Candy Vault Timer'
+ offline=browser.new_page();offline.goto(f'http://127.0.0.1:{server.server_port}/standalone.html');offline.context.set_offline(True)
+ offline.click('#enter');offline.wait_for_selector('#welcome[hidden]',state='attached',timeout=30000)
+ assert offline.evaluate("ctx.state==='running'&&!player.paused"),'Standalone audio must work offline'
  browser.close()
 
 server.shutdown()

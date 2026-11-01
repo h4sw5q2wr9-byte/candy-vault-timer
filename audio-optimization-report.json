@@ -1,0 +1,67 @@
+{
+  "rip": {
+    "path": "assets/audio/rip.mp3",
+    "original_bytes": 292184,
+    "optimized_bytes": 292184,
+    "original_frames": 604800,
+    "optimized_frames": 604800,
+    "sample_rate": 44100,
+    "channels": 2,
+    "duration": 13.714285714285714,
+    "verified_frames": 604800,
+    "max_sample_error": 0.0,
+    "sha256": "1ca55f6def0b8019008c41838aff495dda6c38ef644790b0d55ebcf53c84fdd3"
+  },
+  "intro": {
+    "path": "assets/audio/intro.ogg",
+    "original_bytes": 563693,
+    "optimized_bytes": 468413,
+    "original_frames": 1389138,
+    "optimized_frames": 1186624,
+    "sample_rate": 44100,
+    "channels": 2,
+    "duration": 26.907573696145125,
+    "verified_frames": 1181880,
+    "max_sample_error": 0.0,
+    "sha256": "89471fa01ce30b2a1710f8d544cb9f618ee5575d058ac6bac45a3b50bbb4e417"
+  },
+  "ambience": {
+    "path": "assets/audio/ambience.ogg",
+    "original_bytes": 1245698,
+    "optimized_bytes": 1096131,
+    "original_frames": 3907938,
+    "optimized_frames": 3522112,
+    "sample_rate": 44100,
+    "channels": 2,
+    "duration": 79.86648526077097,
+    "verified_frames": 3514051,
+    "max_sample_error": 0.0,
+    "sha256": "3a95cbe49ead8431e2244d60874a9a3b1fec86ae5dacfc7e4ee1b598c17d0ab5"
+  },
+  "close": {
+    "path": "assets/audio/close.ogg",
+    "original_bytes": 2223173,
+    "optimized_bytes": 2162056,
+    "original_frames": 5556600,
+    "optimized_frames": 5464768,
+    "sample_rate": 44100,
+    "channels": 2,
+    "duration": 123.91764172335601,
+    "verified_frames": 5457375,
+    "max_sample_error": 0.0,
+    "sha256": "f67b057651f7844a5f9fcf6101889742586ad3c826b4b4a685db6a4c54c7e5b9"
+  },
+  "cutscene": {
+    "path": "assets/audio/cutscene.ogg",
+    "original_bytes": 540894,
+    "optimized_bytes": 509585,
+    "original_frames": 1461797,
+    "optimized_frames": 1402688,
+    "sample_rate": 44100,
+    "channels": 2,
+    "duration": 31.806984126984126,
+    "verified_frames": 1396647,
+    "max_sample_error": 0.0,
+    "sha256": "aa6bdcf0b61d1cbb397820c361b2e7650c0db06bb6ee1dcfe3f7b3ba3dd901c3"
+  }
+}

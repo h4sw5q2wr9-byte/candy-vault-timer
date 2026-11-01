@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://h4sw5q2wr9-byte.github.io/candy-vault-timer/sitemap.xml

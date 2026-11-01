@@ -2,7 +2,7 @@
 
 [Open the timer](https://h4sw5q2wr9-byte.github.io/candy-vault-timer/)
 
-Open `index.html` in a current browser and select **Enter the Terminal**. Five original audio files and square R.I.P. artwork are embedded. No audio folder or server is required; HTTPS hosting is recommended for phone browser features.
+Use the live website and select **Enter the Terminal**. The web build loads a small page and script, then fetches separately cached audio when you enter. For a single file that works offline, [download `standalone.html`](standalone.html); it embeds the audio, font, and artwork.
 
 Choose a gravestone preset or enter minutes and seconds, then select **Invoke**. Session naming and the intro-timing setting have been removed. The start remains fixed at 20 seconds into the intro. The interface is presented inside a physical CRT housing with a beveled bezel, inset amber glass, speaker vents, and a power indicator. An original embedded pixel font keeps text consistent across devices. Subtle scanlines, a slow sweep, cursor blink, and a screen-on animation respect reduced-motion settings. Gravestones and fitted text are checked at 320, 375, 390, 430, 768, and 1440 px. The portrait duration editor and running digits are centered, including long time values.
 
@@ -25,22 +25,30 @@ Media behavior follows three modes:
 - **At zero and during the ending:** timer edit, seek, skip, and pause actions are unregistered. The ending continues. Stale timer actions cannot move the finished countdown.
 - **When R.I.P. returns:** play/pause controls only R.I.P. music. Seeking, skipping, and timer editing stay unavailable. Pausing does not set the finished timer to paused or restart it. The small Pause/Play button beside the music label offers the same music-only control.
 
-The media title remains the short countdown, with the app name on the secondary line. Progress is cleared at zero. The OS controls visual button availability; native pause events during the ending are neutralized, while native play/pause events during R.I.P. are honored.
+In Settings, **Live media countdown** controls the title. When enabled, it shows the short remaining time; when disabled it stays at the chosen duration, such as **20:00 timer**. The preference is saved on the device. Static mode avoids repeated metadata and position writes while the on-screen countdown and native progress continue. State changes, pause/resume, and seeking still publish accurate position snapshots. The app name stays on the secondary line. Progress is cleared at zero. The OS controls visual button availability; native pause events during the ending are neutralized, while native play/pause events during R.I.P. are honored.
 
 Elapsed time stays accurate in hidden tabs. Automatic recovery handles suspended or stalled clocks and audio output interruptions. Optional **Keep screen awake** is under Settings. Phone sleep, calls, browser closure, and OS policies can still interrupt sound.
 
-Original audio remains unchanged. Playback uses source-matched 44.1 kHz stereo, a music content hint, and optional constraints disabling voice processing. Browser checks verify those settings; subjective sound quality on a phone still needs listening verification.
+The audio cleanup uses stream copy, not lossy re-encoding: downloader metadata and never-played tails are removed. R.I.P. stays byte-for-byte original to protect its gapless timing. Every played sample, including the approved loop region, was compared with the original in FFmpeg and Chromium with zero difference. Audio transfers are about 6.9% smaller. Playback uses source-matched 44.1 kHz stereo, a music content hint, and optional constraints disabling voice processing.
 
 ## Verification and source
 
 - `node verify.cjs`: gradual tick fade, unity gain except R.I.P., fixed start, lock-at-zero, music-only R.I.P. pause, cue alignment, matched loop points, recovery after multiple wraps, seeking, pause/resume, recovery, and duration validation.
 - `python browser-check.py`: Chromium playback, PCM signal, opaque artwork, short media title, grave-text containment across six widths, phone button visibility, centered duration and timer text, embedded pixel font, reduced-motion fallback, lock-at-zero, and music-only R.I.P. play/pause.
-- Edit `app.js`, `style.css`, or `shell.html`, then run `python build.py` to rebuild the standalone HTML while preserving embedded original audio.
+- Edit `app.js`, `style.css`, or `shell.html`, then run `python build.py`. It verifies the audio-manifest hashes and emits `index.html` plus the small `app-runtime.js` for hosting, and the self-contained `standalone.html` for offline use. Keep `assets/audio/`, icons, the manifest, and generated files in the same project.
 
 This is an unofficial DOORS fan project using user-supplied audio and visual references.
 
 ## GitHub Pages
 
-The site is a static page served from the root of the `main` branch, with `.nojekyll` to skip Jekyll processing. The runtime is the self-contained `index.html`; artwork, font, and soundtracks are embedded. No server, dependencies, analytics, or account system is required to use it.
+The site is a static page served from the root of the `main` branch, with `.nojekyll` to skip Jekyll processing. The web runtime uses `index.html`, `app-runtime.js`, and same-origin `assets/audio/` files with versioned URLs for independent browser caching. Initial HTML is about 35 KB and the runtime script about 25 KB, compared with the previous 6.7 MB HTML. The offline version remains self-contained. There is no application server, analytics, or account system.
 
-For updates, change the source files, rebuild with `python build.py`, run `node verify.cjs`, and commit the generated `index.html` along with the source. Pushing `main` triggers the Pages deployment.
+For updates, change the source files, rebuild with `python build.py`, run `node verify.cjs`, and commit the generated web files, offline HTML, and any changed assets along with the source. Pushing `main` triggers the Pages deployment.
+
+## Name, home-screen image, and search
+
+The page, app manifest, Apple web-app title, and social metadata use **The Candy Vault Timer**. The 180px Apple touch icon and 192/512px manifest icons use the opaque square R.I.P. artwork. An existing iPhone shortcut may need to be removed and added again to refresh its cached name and icon. No service worker is installed; use the single-file download for guaranteed offline use.
+
+The site has a canonical URL, index/follow metadata, Open Graph image, structured WebApplication metadata, `sitemap.xml`, and `robots.txt`. It is publicly accessible, but Google indexing is not confirmed. Search requests in this environment returned a redirect/challenge rather than verifiable results. To request indexing, the owner can verify the site URL prefix in Google Search Console and submit its sitemap or inspect the URL. Google's crawler reads robots.txt at the domain root; the project-level file is provided for transparency and does not change the host root's policy.
+
+See `CREDITS.md` and `audio-optimization-report.json` for attribution and the lossless audio audit.
