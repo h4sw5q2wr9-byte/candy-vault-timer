@@ -9,7 +9,9 @@ Let D be the countdown deadline:
 | Ambience fade-in | Opening + 21.54 seconds, rising over 5 seconds |
 | Tick fade | Opening + 21.54 through +26.80 seconds, gradually decreasing to zero |
 | Low-time music | D − 123.75 seconds; short runs seek into the matching tail |
-| Ambience → low-time overlap | First 6 seconds of low time |
+| Ambience → low-time overlap | Approved D mix, first 8 seconds of low time |
+| Bass and ticking EQ returns to flat | Low-time source position 8 seconds |
+| Prepared EQ entrance rejoins original low time | Source position 8.2 seconds |
 | Ending begins at original source position 0 | D − 7 seconds |
 | Low-time ends, ending source position 7 | D |
 | Setup returns at ending source position 17 | D + 10 seconds |
@@ -24,7 +26,13 @@ All non-R.I.P. tracks have unity track gain outside their fades. R.I.P. has 0.22
 
 Intro gain is unity until original position 21.54, then decreases linearly over 5.26 seconds to zero at 26.80. This lowers each successive tick instead of ending them abruptly. Recovery into the middle of this fade calculates the corresponding gain.
 
-Ambience uses the approved A edit: native loopStart at sample 579726 and loopEnd at sample 3514051, expressed at the original 44.1 kHz rate. The original opening plays once, then a matching 66.537982-second musical cycle repeats. Samples are unchanged, with no per-loop gain modulation or blending. Recovery wraps offsets inside that same musical region after the first pass. Ambience and low-time music still overlap for six seconds with power fades. The ending starts early underneath the low-time tail, preserving original position 7 at zero.
+Ambience uses native loopStart at sample 579726 and loopEnd at sample 3514051, expressed at the original 44.1 kHz rate. The original opening plays once, then a matching 66.537982-second musical cycle repeats. Samples are unchanged, with no per-loop gain modulation or blending. Recovery wraps offsets inside that same musical region after the first pass. At low time's scheduled start, a sample-aligned final source continues from the current position into the original tail, with looping disabled. All possible loop phases have enough original tail for the eight-second handoff. No starting offset is imposed on the intro or ambience.
+
+The selected D mix uses an eight-second equal-power overlap, with a monotonic cubic handover curve reaching equal track gain at 5.085170 seconds. Its gain curve is sampled into scheduled audio-time ramps. This is the selected listening preset, not automatic selection of new musical cue points. Low time's start and timer zero stay fixed.
+
+Low time receives a low shelf at 100 Hz starting at −4 dB and a high shelf at 900 Hz starting at −8 dB. Both return to 0 dB over eight seconds using a raised-cosine gain curve. This lets the bass melody and ticking rise together. Only an 8.2-second EQ entrance is rendered once with OfflineAudioContext, including 0.2 seconds for filter-state settling. The original source then resumes at 8.2 seconds, without a timing change or extra file download. No filters or musical analysis run during playback. Recovery seeks into the prepared entrance, so it does not reset filter history. Short timers without ambience use their original shortened low-time tail.
+
+The ending starts early underneath the low-time tail, preserving original position 7 at zero.
 
 # Controls and recovery
 
@@ -46,8 +54,8 @@ The outer casing and dark inset glass are built with CSS borders and shadows. Ba
 
 # Performance build and media titles
 
-Audio packets are stream-copied into clean Ogg containers, with conservative truncation after the last played sample. Every needed sample was verified identical in FFmpeg and Chromium. R.I.P. is copied unchanged. The ambience file now ends after the approved native loopEnd plus a decoder safety margin; its loopStart and loopEnd remain exactly the same.
+Audio packets are stream-copied into clean Ogg containers, with conservative truncation after the last played sample. Every needed sample was verified identical in FFmpeg and Chromium. R.I.P. is copied unchanged. The ambience keeps its entire original tail for the unlooped final handoff; its loopStart and loopEnd remain exactly the same.
 
-The hosted HTML contains only audio URLs. A deferred, separately cached runtime script starts decoding audio after the Enter gesture. Versioned URLs prevent mismatched cached scripts/audio on updates. The standalone HTML contains the same optimized files as base64 for offline use.
+The hosted HTML contains only audio URLs. A deferred, separately cached runtime script starts decoding audio after the Enter gesture. Versioned URLs prevent mismatched cached scripts/audio on updates. The standalone HTML contains the same optimized files as base64 for offline use. The full original ambience tail is retained for the final handoff; its source PCM remains unchanged.
 
 Static media-title mode shows the configured duration followed by “timer”. It does not publish metadata or media position on each tick; play state, duration changes, seek, and pause/resume remain synchronized. Live mode publishes the title when its displayed second changes and refreshes the native progress snapshot at most every ten seconds outside state changes. Native media progress advances without frequent JavaScript snapshots. Repeated DOM text and document-title assignments are skipped when unchanged.

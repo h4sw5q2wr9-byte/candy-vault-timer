@@ -13,9 +13,9 @@
   },
   "ambience": {
     "src": "./assets/audio/ambience.ogg",
-    "frames": 3522112,
+    "frames": 3907938,
     "sampleRate": 44100,
-    "sha256": "3a95cbe49ead8431e2244d60874a9a3b1fec86ae5dacfc7e4ee1b598c17d0ab5"
+    "sha256": "b64a71a151d05e9f8aab3067c9226560eef2f8823a631084ebb2a69f78cd06fe"
   },
   "close": {
     "src": "./assets/audio/close.ogg",

@@ -28,15 +28,15 @@
   "ambience": {
     "path": "assets/audio/ambience.ogg",
     "original_bytes": 1245698,
-    "optimized_bytes": 1096131,
+    "optimized_bytes": 1214532,
     "original_frames": 3907938,
-    "optimized_frames": 3522112,
+    "optimized_frames": 3907938,
     "sample_rate": 44100,
     "channels": 2,
-    "duration": 79.86648526077097,
-    "verified_frames": 3514051,
+    "duration": 88.61537414965986,
+    "verified_frames": 3907938,
     "max_sample_error": 0.0,
-    "sha256": "3a95cbe49ead8431e2244d60874a9a3b1fec86ae5dacfc7e4ee1b598c17d0ab5"
+    "sha256": "b64a71a151d05e9f8aab3067c9226560eef2f8823a631084ebb2a69f78cd06fe"
   },
   "close": {
     "path": "assets/audio/close.ogg",

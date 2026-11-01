@@ -12,7 +12,9 @@ Choose a gravestone preset or enter minutes and seconds, then select **Invoke**.
 - All other tracks use full track gain. The master volume defaults to 100%; users can lower it with the volume slider. Transition fades still apply.
 - The countdown begins at intro position **20 seconds**.
 - Ambience enters under the ticks at **21.54 seconds**, rising over five seconds. At the same point, the intro begins a **5.26-second gradual fade**, making successive ticks softer through its end at 26.80 seconds.
-- Ambience preserves its original opening, then repeats a matched musical section from original 13.145714 to 79.683696 seconds (a 66.537982-second cycle). There is no per-loop fade or sample remix. The initial five-second fade-in and six-second transition into low-time music remain.
+- Ambience preserves its original opening, then repeats a matched musical section from original 13.145714 to 79.683696 seconds (a 66.537982-second cycle). There is no per-loop fade or sample remix. During the final pass it continues into the original tail, so the outgoing melody does not wrap halfway through the transition.
+- The approved **D — Together** mix uses an eight-second overlap. Low time's bass starts with a gentle −4 dB shelf at 100 Hz, and its ticking range with a −8 dB shelf at 900 Hz. Both ease back to flat over eight seconds, so melody and ticking grow together. The rest of low time plays with its original sound. The fade uses the selected later handover shape; the intro and ambience retain their normal starting positions.
+- The EQ entrance is prepared once into a short 8.2-second buffer (including filter settling), so pause/resume and seeking restore the same sound without live filters or runtime musical analysis. The remaining low-time samples use the original buffer. Short timers without an ambience handoff retain their existing low-time-tail behavior.
 - The ending begins seven seconds before zero, using original MP3 timestamps. At zero, low time ends and the ending reaches original position **7 seconds**.
 - Setup returns at original ending position **17 seconds**. When the audible ending finishes at 31.67 seconds, the original R.I.P. loop fades in over 1.6 seconds.
 - Escape_music remains removed. Internal pauses in the ending remain intact.
@@ -29,12 +31,13 @@ In Settings, **Live media countdown** controls the title. When enabled, it shows
 
 Elapsed time stays accurate in hidden tabs. Automatic recovery handles suspended or stalled clocks and audio output interruptions. Optional **Keep screen awake** is under Settings. Phone sleep, calls, browser closure, and OS policies can still interrupt sound.
 
-The audio cleanup uses stream copy, not lossy re-encoding: downloader metadata and never-played tails are removed. R.I.P. stays byte-for-byte original to protect its gapless timing. Every played sample, including the approved loop region, was compared with the original in FFmpeg and Chromium with zero difference. Audio transfers are about 6.9% smaller. Playback uses source-matched 44.1 kHz stereo, a music content hint, and optional constraints disabling voice processing.
+The audio cleanup uses stream copy, not lossy re-encoding: downloader metadata and never-played tails are removed. The complete original ambience tail is retained for its final handoff. R.I.P. stays byte-for-byte original to protect its gapless timing. Decoded source samples were checked against the originals with zero difference; the selected low-time EQ is a separate, temporary playback effect. Audio transfers are about 4.5% smaller. Playback uses source-matched 44.1 kHz stereo, a music content hint, and optional constraints disabling voice processing.
 
 ## Verification and source
 
 - `node verify.cjs`: gradual tick fade, unity gain except R.I.P., fixed start, lock-at-zero, music-only R.I.P. pause, cue alignment, matched loop points, recovery after multiple wraps, seeking, pause/resume, recovery, and duration validation.
 - `python browser-check.py`: Chromium playback, PCM signal, opaque artwork, short media title, grave-text containment across six widths, phone button visibility, centered duration and timer text, embedded pixel font, reduced-motion fallback, lock-at-zero, and music-only R.I.P. play/pause.
+- `python handoff-check.py`: renders the production scheduler and compares it with the approved D audio, including recovery during and after the EQ entrance. This listening-reference check requires the local audition file at `/workspace/candy-vault-tick-tests/D-together.f32`.
 - Edit `app.js`, `style.css`, or `shell.html`, then run `python build.py`. It verifies the audio-manifest hashes and emits `index.html` plus the small `app-runtime.js` for hosting, and the self-contained `standalone.html` for offline use. Keep `assets/audio/`, icons, the manifest, and generated files in the same project.
 
 This is an unofficial DOORS fan project using user-supplied audio and visual references.

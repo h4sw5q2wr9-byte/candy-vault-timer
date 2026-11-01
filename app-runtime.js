@@ -8,6 +8,8 @@ const ui={};for(const id of ['timer','sub','status','bar','setup','start','pause
 const MEDIA_ARTWORK=[{"src": "./media-artwork-192.png", "sizes": "192x192", "type": "image/png"}, {"src": "./media-artwork.png", "sizes": "512x512", "type": "image/png"}];
 // Matching musical and sample positions; preserve the opening, then repeat without a cycle fade.
 const AMBIENCE_LOOP={start:579726/44100,end:3514051/44100};
+// Approved D mix: long overlap, with melody and ticks entering together.
+const HANDOFF={duration:8,midpoint:5.085170068027211,eqTail:.2};
 const TRACK_EDITS={intro:{start:0,end:26.8},close:{start:0,end:123.75},cutscene:{start:0,end:31.67}};
 const sources=new Set();let ctx,master,analyser,mediaDestination,player,buffers,loading,setupSource,run=null,resetting=false,repairing=false,setupPaused=false,setupPausedAt=0,transportChanging=false,lastSignalAt=Date.now(),lastRepairAt=0,stallAt=0,clockProbe=null;
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
@@ -16,11 +18,46 @@ function duration(){return clamp(Math.trunc(Number(ui.minutes.value)||0),0,999)*
 function normalize(){ui.minutes.value=clamp(Math.trunc(Number(ui.minutes.value)||0),0,999);ui.seconds.value=clamp(Math.trunc(Number(ui.seconds.value)||0),0,59);}
 function level(){if(master)master.gain.setTargetAtTime(Number($('volume').value)/100,ctx.currentTime,.05);}
 function trimBuffer(buffer,edit){if(!edit)return buffer;const first=Math.round(edit.start*buffer.sampleRate),last=Math.min(buffer.length,Math.round(edit.end*buffer.sampleRate)),output=ctx.createBuffer(buffer.numberOfChannels,last-first,buffer.sampleRate);for(let c=0;c<buffer.numberOfChannels;c++)output.getChannelData(c).set(buffer.getChannelData(c).subarray(first,last));return output;}
+async function prepareCloseIntro(buffer){
+ // Render only the short EQ entrance once. Seeking then preserves filter history,
+ // and no live filters or repeated audio analysis run during the countdown.
+ const Offline=window.OfflineAudioContext||window.webkitOfflineAudioContext;
+ const offline=new Offline(buffer.numberOfChannels,Math.round((HANDOFF.duration+HANDOFF.eqTail)*buffer.sampleRate),buffer.sampleRate),source=offline.createBufferSource();source.buffer=buffer;
+ let tail=source;
+ for(const [type,frequency,depth] of [['lowshelf',100,-4],['highshelf',900,-8]]){
+  const eq=offline.createBiquadFilter();eq.type=type;eq.frequency.value=frequency;
+  const curve=Float32Array.from({length:129},(_,i)=>depth*(.5+.5*Math.cos(Math.PI*i/128)));
+  eq.gain.setValueCurveAtTime(curve,0,HANDOFF.duration);eq.gain.setValueAtTime(0,HANDOFF.duration);tail.connect(eq);tail=eq;
+ }
+ tail.connect(offline.destination);source.start();return offline.startRendering();
+}
+function ambienceOffset(seconds){
+ const rate=buffers.ambience.sampleRate,position=Math.round(seconds*rate),start=Math.round(AMBIENCE_LOOP.start*rate),end=Math.round(AMBIENCE_LOOP.end*rate);
+ return (position<end?position:start+(position-start)%(end-start))/rate;
+}
+function handoffAngle(seconds){
+ const a=HANDOFF.midpoint,b=HANDOFF.duration-a,d0=(Math.PI/4)/a,d1=(Math.PI/4)/b;
+ const m0=Math.max(0,((2*a+b)*d0-a*d1)/(a+b)),m2=Math.max(0,((2*b+a)*d1-b*d0)/(a+b));
+ const w1=2*b+a,w2=b+2*a,m1=(w1+w2)/(w1/d0+w2/d1),t=clamp(seconds,0,HANDOFF.duration);
+ const left=t<=a,h=left?a:b,u=(left?t:t-a)/h,y=left?0:Math.PI/4,m=left?m0:m1,n=left?m1:m2;
+ return (2*u*u*u-3*u*u+1)*y+(u*u*u-2*u*u+u)*h*m+(-2*u*u*u+3*u*u)*(y+Math.PI/4)+(u*u*u-u*u)*h*n;
+}
+function handoffEnvelope(after=0,ambience=false){
+ const times=new Set([0,after,after+HANDOFF.midpoint,after+HANDOFF.duration]);
+ for(let i=0;i<=256;i++)times.add(after+HANDOFF.duration*i/256);
+ if(ambience)for(let i=0;i<=32;i++)times.add(5*i/32);
+ return [...times].sort((a,b)=>a-b).map(t=>[t,ambience?Math.sin(clamp(t/5,0,1)*Math.PI/2)*Math.cos(handoffAngle(t-after)):Math.sin(handoffAngle(t-after))]);
+}
+function envelopeAt(points,time){
+ if(time<=points[0][0])return points[0][1];
+ for(let i=1;i<points.length;i++){const [end,value]=points[i];if(time<=end){const [start,previous]=points[i-1];return previous+(value-previous)*(time-start)/(end-start);}}
+ return points.at(-1)[1];
+}
 async function audio(){
  if(!ctx){ctx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:44100,latencyHint:'playback'});master=ctx.createGain();analyser=ctx.createAnalyser();analyser.fftSize=256;master.connect(analyser);level();createTransport();ctx.onstatechange=audioStateChanged;installMediaControls();}
  // Both calls happen inside the original user gesture, before waiting for decoding.
  const previousTransport=transportChanging;transportChanging=true;try{const resume=ctx.resume(),play=player.play();await Promise.all([resume,play]);}finally{transportChanging=previousTransport;}setupPaused=false;setupPausedAt=0;
- if(!loading)loading=(async()=>{const assets=JSON.parse($('audio-assets').textContent),pairs=await Promise.all(Object.entries(assets).map(async([key,b64])=>{let bytes;if(typeof b64==='object'&&b64.src){const response=await fetch(b64.src);if(!response.ok)throw new Error('Could not load '+key+' audio');bytes=await response.arrayBuffer();}else{const raw=atob(b64),data=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)data[i]=raw.charCodeAt(i);bytes=data.buffer;}const buffer=trimBuffer(await ctx.decodeAudioData(bytes),TRACK_EDITS[key]);return [key,buffer];}));buffers=Object.fromEntries(pairs);})();
+ if(!loading)loading=(async()=>{const assets=JSON.parse($('audio-assets').textContent),pairs=await Promise.all(Object.entries(assets).map(async([key,b64])=>{let bytes;if(typeof b64==='object'&&b64.src){const response=await fetch(b64.src);if(!response.ok)throw new Error('Could not load '+key+' audio');bytes=await response.arrayBuffer();}else{const raw=atob(b64),data=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)data[i]=raw.charCodeAt(i);bytes=data.buffer;}const buffer=trimBuffer(await ctx.decodeAudioData(bytes),TRACK_EDITS[key]);return [key,buffer];}));const decoded=Object.fromEntries(pairs);decoded.closeIntro=await prepareCloseIntro(decoded.close);buffers=decoded;})();
  try{await loading;}catch(e){loading=null;throw e;}
 }
 function createTransport(){
@@ -33,16 +70,19 @@ function createTransport(){
  player.addEventListener('playing',()=>{stallAt=0;});
  for(const event of ['stalled','waiting','error'])player.addEventListener(event,()=>{if(!stallAt)stallAt=Date.now();});
 }
-function track(key,when,{offset=0,length,volume=1,loop=false,fadeIn=0,fadeOut=0,elapsed=0,curve='linear'}={}){
+function track(key,when,{offset=0,length,volume=1,loop=false,fadeIn=0,fadeOut=0,elapsed=0,curve='linear',envelope}={}){
  const source=ctx.createBufferSource(),gain=ctx.createGain();source.buffer=buffers[key];source.loop=loop;if(loop&&key==='ambience'){source.loopStart=AMBIENCE_LOOP.start;source.loopEnd=AMBIENCE_LOOP.end;}source.connect(gain);gain.connect(master);
  const total=length??(loop?Infinity:buffers[key].duration-offset),originalTotal=total+elapsed,inFade=Math.min(fadeIn,originalTotal/2),outFade=Math.min(fadeOut,originalTotal-inFade);
  const fade=x=>curve==='power'?Math.sin(clamp(x,0,1)*Math.PI/2):clamp(x,0,1);
- const valueAt=e=>volume*Math.min(inFade?fade(e/inFade):1,outFade?fade((originalTotal-e)/outFade):1);
+ const valueAt=e=>volume*Math.min(inFade?fade(e/inFade):1,outFade?fade((originalTotal-e)/outFade):1)*(envelope?envelopeAt(envelope,e):1);
  gain.gain.setValueAtTime(valueAt(elapsed),when);
- // Schedule exact endpoints plus intermediate values for a smooth power crossfade.
- function ramp(from,to){if(to<=from)return;const count=curve==='power'?32:1;for(let i=1;i<=count;i++){const at=from+(to-from)*i/count;gain.gain.linearRampToValueAtTime(valueAt(at),when+at-elapsed);}}
- if(inFade>elapsed)ramp(elapsed,inFade);
- if(outFade){const start=originalTotal-outFade;if(elapsed<start)gain.gain.setValueAtTime(volume,when+start-elapsed);ramp(Math.max(elapsed,start),originalTotal);}
+ // Schedule the envelope in audio time, including correct values after recovery.
+ const times=new Set();
+ function ramp(from,to){if(to<=from)return;const count=curve==='power'?32:1;times.add(from);for(let i=1;i<=count;i++)times.add(from+(to-from)*i/count);}
+ if(inFade>elapsed)ramp(0,inFade);
+ if(outFade)ramp(originalTotal-outFade,originalTotal);
+ if(envelope)for(const [at] of envelope)times.add(at);
+ for(const at of [...times].filter(t=>t>elapsed&&t<=originalTotal).sort((a,b)=>a-b))gain.gain.linearRampToValueAtTime(valueAt(at),when+at-elapsed);
  source.start(when,offset);if(Number.isFinite(total))source.stop(when+total);
  const item={source,gain,key,when,end:when+total};sources.add(item);source.onended=()=>{sources.delete(item);source.disconnect();gain.disconnect();};return item;
 }
@@ -76,9 +116,19 @@ function buildTimeline(r){
  const {origin,countdown,total}=r,deadline=countdown+total,closingEnd=deadline,closing=Math.max(countdown,closingEnd-buffers.close.duration),ambienceStart=origin+21.54,introEnd=origin+buffers.intro.duration;
  const cutscene=deadline-7,returnAt=cutscene+17,end=cutscene+buffers.cutscene.duration;
  const plans=[{key:'intro',at:origin,end:introEnd,volume:1,fadeOut:buffers.intro.duration-21.54}];
- if(closing>ambienceStart)plans.push({key:'ambience',at:ambienceStart,end:Math.min(closingEnd,closing+6),loop:true,volume:1,fadeIn:5,fadeOut:6,curve:'power'});
+ const hasAmbience=closing>ambienceStart;
+ if(hasAmbience){
+  const before=closing-ambienceStart,envelope=handoffEnvelope(before,true);
+  plans.push({key:'ambience',at:ambienceStart,end:closing,loop:true,volume:1,envelope});
+  // On its final pass, continue into the original tail instead of wrapping
+  // halfway through the transition and truncating the outgoing melody.
+  plans.push({key:'ambience',at:closing,end:closing+HANDOFF.duration,offset:ambienceOffset(before),volume:1,envelope:envelope.map(([t,v])=>[t-before,v])});
+ }
  const closeLength=closingEnd-closing;
- plans.push({key:'close',at:closing,end:closingEnd,offset:Math.max(0,buffers.close.duration-closeLength),volume:1,fadeIn:Math.min(6,closeLength/3),fadeOut:Math.min(4,closeLength/2),curve:'power'});
+ if(hasAmbience){
+  plans.push({key:'closeIntro',at:closing,end:closing+buffers.closeIntro.duration,volume:1,envelope:handoffEnvelope()});
+  plans.push({key:'close',at:closing+buffers.closeIntro.duration,end:closingEnd,offset:buffers.closeIntro.duration,volume:1,fadeOut:4,curve:'power'});
+ }else plans.push({key:'close',at:closing,end:closingEnd,offset:Math.max(0,buffers.close.duration-closeLength),volume:1,fadeIn:Math.min(6,closeLength/3),fadeOut:Math.min(4,closeLength/2),curve:'power'});
  plans.push({key:'cutscene',at:cutscene,end,volume:1,fadeIn:.02,fadeOut:.15});
  plans.push({key:'rip',at:end,end:Infinity,loop:true,volume:.22,fadeIn:1.6});
  Object.assign(r,{deadline,closingEnd,closing,ambienceStart,cutscene,returnAt,end,plans});
@@ -127,7 +177,7 @@ function syncMediaPanel(force=false){
 function runTime(){return run?run.origin+((run.paused?run.pausedAt:setupPaused&&run.completed?setupPausedAt:Date.now())-run.wallStartedAt)/1000:0;}
 function scheduleRun(keepSetup=false){
  if(!run||run.paused)return;const r=run,t=runTime();if(!keepSetup)stopAll();r.scheduledVirtual=t;r.scheduledAudio=ctx.currentTime;
- for(const plan of r.plans){if(t>=plan.end)continue;const elapsed=Math.max(0,t-plan.at),at=ctx.currentTime+Math.max(0,plan.at-t);let offset=(plan.offset||0)+elapsed;if(plan.loop){const region=plan.key==='ambience'?AMBIENCE_LOOP:{start:0,end:buffers[plan.key].duration};if(offset>=region.end)offset=region.start+(offset-region.start)%(region.end-region.start);}track(plan.key,at,{...plan,offset,length:plan.end-Math.max(t,plan.at),elapsed});}
+ for(const plan of r.plans){if(t>=plan.end)continue;const elapsed=Math.max(0,t-plan.at),at=ctx.currentTime+Math.max(0,plan.at-t);let offset=(plan.offset||0)+elapsed;if(plan.loop){if(plan.key==='ambience')offset=ambienceOffset(offset);else offset%=buffers[plan.key].duration;}track(plan.key,at,{...plan,offset,length:plan.end-Math.max(t,plan.at),elapsed});}
 }
 function audioStateChanged(){
  if(!run||run.paused||setupPaused||repairing)return;if(ctx.state==='running'){if(run.audioInterrupted){run.audioInterrupted=false;scheduleRun();}}else if(ctx.state==='suspended'||ctx.state==='interrupted'){run.audioInterrupted=true;recoverAudio();}render();
