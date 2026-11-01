@@ -10,11 +10,22 @@ function duration(){return clamp(Math.trunc(Number(ui.minutes.value)||0),0,999)*
 function normalize(){ui.minutes.value=clamp(Math.trunc(Number(ui.minutes.value)||0),0,999);ui.seconds.value=clamp(Math.trunc(Number(ui.seconds.value)||0),0,59);}
 function level(){if(master)master.gain.setTargetAtTime(Number($('volume').value)/100,ctx.currentTime,.05);}
 function trimBuffer(buffer,edit){if(!edit)return buffer;const first=Math.round(edit.start*buffer.sampleRate),last=Math.min(buffer.length,Math.round(edit.end*buffer.sampleRate)),output=ctx.createBuffer(buffer.numberOfChannels,last-first,buffer.sampleRate);for(let c=0;c<buffer.numberOfChannels;c++)output.getChannelData(c).set(buffer.getChannelData(c).subarray(first,last));return output;}
+function loopBuffer(buffer,seconds){
+ // A long, correlation-compensated overlap prevents a hard seam or a volume swell.
+ const overlap=Math.min(Math.round(seconds*buffer.sampleRate),Math.floor(buffer.length/4)),middle=buffer.length-2*overlap,output=ctx.createBuffer(buffer.numberOfChannels,buffer.length-overlap,buffer.sampleRate);
+ for(let c=0;c<buffer.numberOfChannels;c++){
+  const input=buffer.getChannelData(c),data=output.getChannelData(c);data.set(input.subarray(overlap,buffer.length-overlap));let dot=0,a=0,b=0;
+  for(let i=0;i<overlap;i++){const tail=input[buffer.length-overlap+i],head=input[i];dot+=tail*head;a+=tail*tail;b+=head*head;}
+  const correlation=clamp(dot/Math.sqrt(a*b||1),0,1);
+  for(let i=0;i<overlap;i++){const phase=i/(overlap-1)*Math.PI/2,x=Math.cos(phase),y=Math.sin(phase),normalizer=1/Math.sqrt(x*x+y*y+2*correlation*x*y);data[middle+i]=(input[buffer.length-overlap+i]*x+input[i]*y)*normalizer;}
+ }
+ return output;
+}
 async function audio(){
  if(!ctx){ctx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:44100,latencyHint:'playback'});master=ctx.createGain();analyser=ctx.createAnalyser();analyser.fftSize=256;master.connect(analyser);level();createTransport();ctx.onstatechange=audioStateChanged;installMediaControls();}
  // Both calls happen inside the original user gesture, before waiting for decoding.
  const previousTransport=transportChanging;transportChanging=true;try{const resume=ctx.resume(),play=player.play();await Promise.all([resume,play]);}finally{transportChanging=previousTransport;}setupPaused=false;setupPausedAt=0;
- if(!loading)loading=(async()=>{const assets=JSON.parse($('audio-assets').textContent),pairs=await Promise.all(Object.entries(assets).map(async([key,b64])=>{const raw=atob(b64),bytes=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);let buffer=trimBuffer(await ctx.decodeAudioData(bytes.buffer),TRACK_EDITS[key]);return [key,buffer];}));buffers=Object.fromEntries(pairs);})();
+ if(!loading)loading=(async()=>{const assets=JSON.parse($('audio-assets').textContent),pairs=await Promise.all(Object.entries(assets).map(async([key,b64])=>{const raw=atob(b64),bytes=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);let buffer=trimBuffer(await ctx.decodeAudioData(bytes.buffer),TRACK_EDITS[key]);if(key==='ambience')buffer=loopBuffer(buffer,6);return [key,buffer];}));buffers=Object.fromEntries(pairs);})();
  try{await loading;}catch(e){loading=null;throw e;}
 }
 function createTransport(){
