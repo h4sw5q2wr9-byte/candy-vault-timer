@@ -50,7 +50,9 @@ For updates, change the source files, rebuild with `python build.py`, run `node 
 
 ## Name, home-screen image, and search
 
-The page, app manifest, Apple web-app title, and social metadata use **The Candy Vault Timer**. The 180px Apple touch icon and 192/512px manifest icons use the opaque square R.I.P. artwork. An existing iPhone shortcut may need to be removed and added again to refresh its cached name and icon. No service worker is installed; use the single-file download for guaranteed offline use.
+The page, app manifest, Apple web-app title, and social metadata use **The Candy Vault Timer**. The 180px Apple touch icon and 192/512px manifest icons use the opaque square R.I.P. artwork. The Apple icon has a content-versioned filename, and manifest/favicon URLs have content versions to avoid reusing stale cached images.
+
+If an iPhone Home Screen icon still shows a fallback letter, remove that old shortcut, open the live GitHub Pages URL directly in Safari, and use Share → Add to Home Screen. Adding an HTML-viewer page or a shortcut from an embedded browser may use that host's metadata. Updating the website cannot force an already-saved Home Screen icon to refresh. No service worker is installed; use the single-file download for guaranteed offline use.
 
 The site has a canonical URL, index/follow metadata, Open Graph image, structured WebApplication metadata, `sitemap.xml`, and `robots.txt`. It is publicly accessible, but Google indexing is not confirmed. Search requests in this environment returned a redirect/challenge rather than verifiable results. To request indexing, the owner can verify the site URL prefix in Google Search Console and submit its sitemap or inspect the URL. Google's crawler reads robots.txt at the domain root; the project-level file is provided for transparency and does not change the host root's policy.
 

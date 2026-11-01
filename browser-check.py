@@ -16,10 +16,19 @@ with sync_playwright() as p:
  page.goto(f'http://127.0.0.1:{server.server_port}/index.html')
  assert page.title()=='The Candy Vault Timer'
  assert page.locator('meta[name=apple-mobile-web-app-title]').get_attribute('content')=='The Candy Vault Timer'
- assert page.locator('link[rel=apple-touch-icon]').get_attribute('href')=='./apple-touch-icon.png'
- assert page.locator('link[rel=manifest]').get_attribute('href')=='./manifest.webmanifest'
+ touch_url=page.locator('link[rel=apple-touch-icon]').get_attribute('href')
+ assert touch_url.startswith('./apple-touch-icon-') and touch_url.endswith('.png')
+ manifest_url=page.locator('link[rel=manifest]').get_attribute('href')
+ assert manifest_url.startswith('./manifest.webmanifest?v=')
+ # Actual advertised home-screen images must decode, match their declared
+ # dimensions, and be completely opaque (the OS supplies its own corners).
+ assert page.evaluate('''async href=>{const image=new Image();image.src=href;await image.decode();const canvas=document.createElement('canvas');canvas.width=canvas.height=180;const draw=canvas.getContext('2d');draw.drawImage(image,0,0);const pixels=draw.getImageData(0,0,180,180).data;return image.naturalWidth===180&&image.naturalHeight===180&&pixels.every((v,i)=>i%4!==3||v===255);}''',touch_url)
  assert not audio_requests,'Music must not delay first page render'
- manifest=page.evaluate("async()=>await (await fetch('./manifest.webmanifest')).json()");assert manifest['name']=='The Candy Vault Timer'
+ manifest=page.evaluate("async href=>await (await fetch(href)).json()",manifest_url);assert manifest['name']=='The Candy Vault Timer'
+ assert manifest['id']=='./' and manifest['start_url']=='./'
+ for icon in manifest['icons']:
+  assert '?v=' in icon['src']
+  assert page.evaluate('async icon=>{const image=new Image();image.src=icon.src;await image.decode();return image.naturalWidth+\"x\"+image.naturalHeight===icon.sizes;}',icon)
  page.screenshot(path=str(root/'welcome-preview.png'))
  page.click('#enter');page.wait_for_selector('#welcome[hidden]',state='attached',timeout=30000);page.evaluate('document.fonts.ready');page.wait_for_timeout(500)
  assert len(audio_requests)==5,audio_requests
