@@ -15,11 +15,11 @@ Let D be the countdown deadline:
 | Ending begins at original source position 0 | D − 7 seconds |
 | Low-time ends, ending source position 7 | D |
 | Setup returns at ending source position 17 | D + 10 seconds |
-| Ending fades from original source position 15 to 17 | D + 8 through D + 10 seconds |
-| Audible ending finishes at source position 17 | D + 10 seconds |
+| Ending B fades from original source position 19 to 21 | D + 12 through D + 14 seconds |
+| Audible ending finishes at source position 21 | D + 14 seconds |
 | Original R.I.P. loop returns | At ending finish, fading in over 1.6 seconds |
 
-All ending cues use the original uploaded recording's timestamps, including its quiet opening. The ending fades linearly from full gain at original position 15 to zero at 17; all later audio is omitted. Internal pauses before that point remain intact. Zero still coincides with original position 7, and setup/R.I.P. return at position 17.
+All ending cues use the original uploaded recording's timestamps, including its quiet opening. Selected B fades linearly from full gain at original position 19 to zero at 21; all later audio is omitted. Internal pauses before that point remain intact. Zero still coincides with original position 7. Setup returns at position 17 as before, and R.I.P. returns at 21.
 
 # Gain and looping
 
@@ -44,6 +44,8 @@ Timer actions are available only before D (zero). At D the app clears progress, 
 At the R.I.P. handoff, only play/pause actions become available. They suspend/resume the music transport while leaving the finished timer unpaused. For a retained completed run, its post-ending audio position is held and restored so R.I.P. resumes from the paused point. Recovery and the watchdog respect an intentional R.I.P. pause. Initial setup has the same music-only behavior. Seek and skip remain unavailable.
 
 The watchdog detects context interruptions, frozen clocks, output stalls, and prolonged zero output. Recovery seeks to the correct position instead of restarting earlier music. Hidden-tab rendering does not determine audio cue scheduling.
+
+Each new run retires the old output bus with a 40ms fade and stops its tracked voices. A 100ms cleanup disconnects the bus and any remaining old nodes, including future sources whose ended event has not arrived. New voices connect to a fresh bus. The native player is paused and the audio context is cycled synchronously in the Invoke gesture, with a fresh running clock confirmed before the new origin is created. Cached audio is reused. Run/generation/bus checks invalidate previous asynchronous repairs; retired source callbacks only clean their own bus. Starting another timer while the old ending is still playing therefore does not mix old ending or R.I.P. sources into the new intro.
 
 Playback is 44.1 kHz stereo with a music content hint and requests to disable voice processing. No original audio is re-encoded. Artwork is opaque square PNG at 192px and 512px. Browser checks cover these properties and text containment; physical-device audio quality and OS presentation remain device-dependent.
 

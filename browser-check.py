@@ -116,7 +116,7 @@ with sync_playwright() as p:
  # Seek the playback clock through the 17-second return cue, then into the RIP handoff.
  page.evaluate('run.wallStartedAt=Date.now()-(run.returnAt-run.origin+.1)*1000;scheduleRun();render()')
  assert page.locator('#setup').is_visible();assert page.locator('#runPanel').is_hidden()
- assert page.evaluate('run.returned&&run.completed')
+ assert page.evaluate('run.returned&&!run.completed')
  page.fill('#minutes','25');assert page.evaluate('run.total')>=15
  page.evaluate('run.wallStartedAt=Date.now()-(run.end-run.origin+.2)*1000;scheduleRun();render()')
  page.wait_for_timeout(200);assert page.evaluate('run.completed&&!player.paused')

@@ -25,8 +25,8 @@
   },
   "cutscene": {
     "src": "./assets/audio/cutscene.ogg",
-    "frames": 754752,
+    "frames": 931520,
     "sampleRate": 44100,
-    "sha256": "14ef5c0c012c22eead04beba06472618a2652bfb9aae5d2f626340e671f4746e"
+    "sha256": "b811831eb937675eeaa0dba405c2d66863c8402b740046b8044d4999f110cfb8"
   }
 }

@@ -12,8 +12,8 @@ const MEDIA_ARTWORK=[{"src": "./media-artwork-192.png", "sizes": "192x192", "typ
 const AMBIENCE_LOOP={start:579726/44100,end:3514051/44100};
 // Approved D mix: long overlap, with melody and ticks entering together.
 const HANDOFF={duration:8,midpoint:5.085170068027211,eqTail:.2};
-const TRACK_EDITS={intro:{start:0,end:26.8},close:{start:0,end:123.75},cutscene:{start:0,end:17}};
-const sources=new Set();let ctx,master,analyser,mediaDestination,player,buffers,loading,setupSource,run=null,resetting=false,repairing=false,setupPaused=false,setupPausedAt=0,transportChanging=false,lastSignalAt=Date.now(),lastRepairAt=0,stallAt=0,clockProbe=null;
+const TRACK_EDITS={intro:{start:0,end:26.8},close:{start:0,end:123.75},cutscene:{start:0,end:21}};
+const sources=new Set();let ctx,master,mixBus,analyser,mediaDestination,player,buffers,loading,setupSource,run=null,resetting=false,startingRun=false,repairing=false,setupPaused=false,setupPausedAt=0,transportChanging=false,lastSignalAt=Date.now(),lastRepairAt=0,stallAt=0,clockProbe=null;
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 const fmt=seconds=>{const n=Math.max(0,Math.ceil(seconds-1e-6));return String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');};
 function duration(){return clamp(Math.trunc(Number(ui.minutes.value)||0),0,999)*60+clamp(Math.trunc(Number(ui.seconds.value)||0),0,59);}
@@ -56,7 +56,7 @@ function envelopeAt(points,time){
  return points.at(-1)[1];
 }
 async function audio(){
- if(!ctx){ctx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:44100,latencyHint:'playback'});master=ctx.createGain();analyser=ctx.createAnalyser();analyser.fftSize=256;master.connect(analyser);level();createTransport();ctx.onstatechange=audioStateChanged;installMediaControls();}
+ if(!ctx){ctx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:44100,latencyHint:'playback'});master=ctx.createGain();mixBus=ctx.createGain();mixBus.connect(master);analyser=ctx.createAnalyser();analyser.fftSize=256;master.connect(analyser);level();createTransport();ctx.onstatechange=audioStateChanged;installMediaControls();}
  // Both calls happen inside the original user gesture, before waiting for decoding.
  const previousTransport=transportChanging;transportChanging=true;try{const resume=ctx.resume(),play=player.play();await Promise.all([resume,play]);}finally{transportChanging=previousTransport;}setupPaused=false;setupPausedAt=0;
  if(!loading)loading=(async()=>{const assets=JSON.parse($('audio-assets').textContent),pairs=await Promise.all(Object.entries(assets).map(async([key,b64])=>{let bytes;if(typeof b64==='object'&&b64.src){const response=await fetch(b64.src);if(!response.ok)throw new Error('Could not load '+key+' audio');bytes=await response.arrayBuffer();}else{const raw=atob(b64),data=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)data[i]=raw.charCodeAt(i);bytes=data.buffer;}const buffer=trimBuffer(await ctx.decodeAudioData(bytes),TRACK_EDITS[key]);return [key,buffer];}));const decoded=Object.fromEntries(pairs);decoded.closeIntro=await prepareCloseIntro(decoded.close);buffers=decoded;})();
@@ -73,7 +73,7 @@ function createTransport(){
  for(const event of ['stalled','waiting','error'])player.addEventListener(event,()=>{if(!stallAt)stallAt=Date.now();});
 }
 function track(key,when,{offset=0,length,volume=1,loop=false,fadeIn=0,fadeOut=0,elapsed=0,curve='linear',envelope}={}){
- const source=ctx.createBufferSource(),gain=ctx.createGain();source.buffer=buffers[key];source.loop=loop;if(loop&&key==='ambience'){source.loopStart=AMBIENCE_LOOP.start;source.loopEnd=AMBIENCE_LOOP.end;}source.connect(gain);gain.connect(master);
+ const source=ctx.createBufferSource(),gain=ctx.createGain(),bus=mixBus?.context===ctx?mixBus:master;source.buffer=buffers[key];source.loop=loop;if(loop&&key==='ambience'){source.loopStart=AMBIENCE_LOOP.start;source.loopEnd=AMBIENCE_LOOP.end;}source.connect(gain);gain.connect(bus);
  const total=length??(loop?Infinity:buffers[key].duration-offset),originalTotal=total+elapsed,inFade=Math.min(fadeIn,originalTotal/2),outFade=Math.min(fadeOut,originalTotal-inFade);
  const fade=x=>curve==='power'?Math.sin(clamp(x,0,1)*Math.PI/2):clamp(x,0,1);
  const valueAt=e=>volume*Math.min(inFade?fade(e/inFade):1,outFade?fade((originalTotal-e)/outFade):1)*(envelope?envelopeAt(envelope,e):1);
@@ -86,11 +86,23 @@ function track(key,when,{offset=0,length,volume=1,loop=false,fadeIn=0,fadeOut=0,
  if(envelope)for(const [at] of envelope)times.add(at);
  for(const at of [...times].filter(t=>t>elapsed&&t<=originalTotal).sort((a,b)=>a-b))gain.gain.linearRampToValueAtTime(valueAt(at),when+at-elapsed);
  source.start(when,offset);if(Number.isFinite(total))source.stop(when+total);
- const item={source,gain,key,when,end:when+total};sources.add(item);source.onended=()=>{sources.delete(item);source.disconnect();gain.disconnect();};return item;
+ const item={source,gain,bus,key,when,end:when+total};sources.add(item);source.onended=()=>releaseSource(item);return item;
 }
-function stopAll(){for(const item of sources){try{item.source.stop();}catch{}item.source.disconnect();item.gain.disconnect();}sources.clear();setupSource=null;}
-function fadeAll(seconds){const now=ctx.currentTime;for(const item of sources){item.gain.gain.cancelScheduledValues(now);item.gain.gain.setValueAtTime(item.gain.gain.value,now);item.gain.gain.linearRampToValueAtTime(0,now+seconds);try{item.source.stop(now+seconds);}catch{}}setupSource=null;}
-function setupMusic(){if(buffers&&!setupSource){setupSource=track('rip',ctx.currentTime+.02,{loop:true,volume:.22,fadeIn:1.6});mediaState('playing');}}
+function releaseSource(item){sources.delete(item);item.source.disconnect();item.gain.disconnect();if(item.bus!==mixBus&&item.bus!==master&&![...sources].some(other=>other.bus===item.bus))item.bus.disconnect();}
+function stopAll(){for(const item of [...sources]){try{item.source.stop();}catch{}releaseSource(item);}setupSource=null;}
+function retireMix(){
+ const old=mixBus,now=ctx.currentTime,end=now+.04;
+ if(old){old.gain.cancelScheduledValues(now);old.gain.setValueAtTime(old.gain.value,now);old.gain.linearRampToValueAtTime(0,end);for(const item of sources){if(item.bus!==old)continue;item.retired=true;item.end=Math.min(item.end,end);try{item.source.stop(end);}catch{}}setTimeout(()=>{for(const item of [...sources])if(item.bus===old)releaseSource(item);old.disconnect();},100);}
+ mixBus=ctx.createGain();mixBus.connect(master);setupSource=null;
+}
+function restartRunAudio(){
+ // Isolate old voices and flush the same native output path that pause/play
+ // repairs, without re-decoding the soundtrack or changing intro timing.
+ run=null;armFinish();setupPaused=false;setupPausedAt=0;clockProbe=null;stallAt=0;transportStarting=true;retireMix();
+ const previous=transportChanging;transportChanging=true;
+ player.pause();callNative(()=>ctx.suspend()).catch(()=>{});const activation=activateTransport(true);transportChanging=previous;return activation;
+}
+function setupMusic(){if(!startingRun&&buffers&&!setupSource){setupSource=track('rip',ctx.currentTime+.02,{loop:true,volume:.22,fadeIn:1.6});mediaState('playing');}}
 function stage(key){if(document.body.dataset.state!==key)document.body.dataset.state=key;}
 function setupView(outro=false){
  stage('setup');ui.runPanel.hidden=true;ui.setup.hidden=false;ui.start.hidden=false;ui.pause.hidden=true;ui.reset.hidden=true;ui.resumeAudio.hidden=true;setText(ui.status,outro?'SESSION COMPLETE':'READY');ui.screenLabel.textContent='TIME REMAINING';setText(ui.hint,outro?'Your next session starts here.':'Choose your time. Enter the vault.');setText(ui.nowPlaying,outro?'The final scene is playing.':'R.I.P. · Set up your next session');setPageTitle(APP_NAME);ui.start.textContent='INVOKE';ui.pause.textContent=run?.paused?'RESUME TIMER':'PAUSE TIMER';
@@ -98,14 +110,14 @@ function setupView(outro=false){
 function error(message){setText(ui.hint,message);ui.hint.classList.add('error');}
 $('enter').onclick=async()=>{const button=$('enter');button.disabled=true;button.textContent='CONNECTING…';$('loadStatus').hidden=false;$('loadStatus').textContent='Loading the soundtrack…';try{await audio();setupMusic();document.body.classList.add('powered');$('welcome').hidden=true;syncMusicButton();ui.start.focus();}catch{button.disabled=false;button.textContent='TRY AGAIN';$('loadStatus').textContent='Audio could not start. Tap to try again.';}};
 ui.start.onclick=async()=>{
- if((run&&!run.returned)||resetting)return;normalize();const total=duration();if(total<1){error('Set a duration of at least one second.');return;}ui.start.disabled=true;
+ if((run&&!run.returned)||resetting||startingRun)return;normalize();const total=duration();if(total<1){error('Set a duration of at least one second.');return;}ui.start.disabled=true;startingRun=true;const generation=++musicGeneration;
  try{
-  await audio();fadeAll(.65);ui.hint.classList.remove('error');
+  if(ctx&&buffers)await restartRunAudio();else await audio();if(generation!==musicGeneration)return;transportStarting=false;clockProbe=null;stallAt=0;lastRepairAt=0;ui.hint.classList.remove('error');
   const origin=ctx.currentTime+.08,countdown=origin+20;
    run={origin,countdown,total,wallStartedAt:Date.now()+80,paused:false,musicPaused:false,finishAttempted:false,audioInterrupted:false,returned:false,completed:false};buildTimeline(run);
   scheduleRun(true);mediaState('playing');requestWake();lastSignalAt=Date.now();
   ui.setup.hidden=true;ui.runPanel.hidden=false;ui.start.hidden=true;ui.pause.hidden=false;ui.pause.disabled=false;ui.pause.textContent='PAUSE TIMER';ui.reset.hidden=false;ui.reset.disabled=false;render();
- }catch{stopAll();run=null;setupView();setupMusic();error('Audio was interrupted. Tap Invoke to try again.');}finally{ui.start.disabled=false;}
+ }catch{if(generation===musicGeneration){transportStarting=false;stopAll();run=null;startingRun=false;setupView();setupMusic();error('Audio was interrupted. Tap Invoke to try again.');}}finally{startingRun=false;ui.start.disabled=false;}
 };
 ui.pause.onclick=()=>setPaused(!run?.paused);ui.resumeAudio.onclick=()=>run?.musicPaused?setMusicPaused(false,true):recoverAudio(true);
 $('liveMediaTitle').checked=liveMediaTitle;$('liveMediaTitle').onchange=()=>{liveMediaTitle=$('liveMediaTitle').checked;try{localStorage.setItem('candyVault.liveMediaTitle',String(liveMediaTitle));}catch{}lastMediaKey='';syncMediaPanel(true);render();};
@@ -203,21 +215,22 @@ function onMediaPlay(fromElement=false){
  return setMusicPaused(false);
 }
 function callNative(fn){try{return Promise.resolve(fn());}catch(error){return Promise.reject(error);}}
-function activateTransport(){
+function activateTransport(freshClock=false){
  // Both native calls must run inside the original media-control gesture.
  // WebKit may leave resume() pending; native playing/state events can also
  // confirm that the stream and context have actually restarted.
  if(cancelActivation)cancelActivation();
  return new Promise((resolve,reject)=>{
-  let done=false,played=false;
-  const clean=()=>{player.removeEventListener?.('playing',playing);ctx.removeEventListener?.('statechange',check);if(cancelActivation===cancel)cancelActivation=null;};
+  let done=false,played=false,clockReady=!freshClock&&ctx.state==='running';
+  const clean=()=>{player.removeEventListener?.('playing',playing);ctx.removeEventListener?.('statechange',contextChanged);if(cancelActivation===cancel)cancelActivation=null;};
   const fail=error=>{if(done)return;done=true;clean();reject(error);};
-  const check=()=>{if(!done&&played&&ctx.state==='running'&&!player.paused){done=true;clean();resolve();}};
+  const check=()=>{if(!done&&played&&clockReady&&ctx.state==='running'&&!player.paused){done=true;clean();resolve();}};
+  const contextChanged=()=>{clockReady=ctx.state==='running';check();};
   const playing=()=>{played=true;check();},cancel=()=>fail(new Error('Playback request replaced'));
-  cancelActivation=cancel;player.addEventListener('playing',playing);ctx.addEventListener?.('statechange',check);
+  cancelActivation=cancel;player.addEventListener('playing',playing);ctx.addEventListener?.('statechange',contextChanged);
   try{if(navigator.audioSession)navigator.audioSession.type='playback';}catch{}
   const resume=callNative(()=>ctx.resume()),play=callNative(()=>player.play());
-  resume.then(check,fail);play.then(playing,fail);
+  resume.then(contextChanged,fail);play.then(playing,fail);
  });
 }
 function suspendTransport(){
@@ -249,15 +262,16 @@ function audioStateChanged(){
  if(run?.paused||run?.musicPaused||setupPaused||repairing||transportChanging||transportStarting)return;if(ctx.state==='interrupted'&&mediaMode()==='rip'){pauseSetup(true);return;}if(!run)return;if(ctx.state==='running'){if(run.audioInterrupted){run.audioInterrupted=false;scheduleRun();}}else if(ctx.state==='suspended'||ctx.state==='interrupted'){if(keepCounting&&mediaMode()==='timer'&&(ctx.state==='interrupted'||player.paused))setMusicPaused(true);else{run.audioInterrupted=true;recoverAudio();}}render();
 }
 async function recoverAudio(force=false){
- if(!ctx||repairing||transportStarting||run?.paused||run?.musicPaused||setupPaused)return;repairing=true;const currentRun=run;
+ if(!ctx||repairing||startingRun||transportStarting||run?.paused||run?.musicPaused||setupPaused)return;repairing=true;const currentRun=run,generation=musicGeneration,currentBus=mixBus;
+ const current=()=>run===currentRun&&generation===musicGeneration&&mixBus===currentBus;
  try{
-  if(force||stallAt&&Date.now()-stallAt>3000){transportChanging=true;player.pause();callNative(()=>ctx.suspend()).catch(()=>{});const activation=activateTransport();transportChanging=false;await activation;stallAt=0;if(run===currentRun){if(run)scheduleRun();else{stopAll();setupMusic();}}}
+  if(force||stallAt&&Date.now()-stallAt>3000){transportChanging=true;player.pause();callNative(()=>ctx.suspend()).catch(()=>{});const activation=activateTransport(true);transportChanging=false;await activation;if(!current())return;stallAt=0;if(run)scheduleRun();else{stopAll();setupMusic();}}
   else if(ctx.state!=='running'||player.paused){const previous=transportChanging;transportChanging=true;const activation=activateTransport();transportChanging=previous;await activation;}
-  if(run!==currentRun)return;
+  if(!current())return;
   player.muted=false;player.volume=1;if(player.paused||force)await player.play();level();
   if(run){const expected=run.scheduledVirtual+(ctx.currentTime-run.scheduledAudio);if(run.audioInterrupted||Math.abs(runTime()-expected)>.25){run.audioInterrupted=false;scheduleRun();}}
   else if(!setupSource)setupMusic();
- }catch{if(run){run.audioInterrupted=true;if(keepCounting&&mediaMode()==='timer')setMusicPaused(true);}}finally{transportChanging=false;repairing=false;render();}
+ }catch{if(current()&&run){run.audioInterrupted=true;if(keepCounting&&mediaMode()==='timer')setMusicPaused(true);}}finally{transportChanging=false;repairing=false;render();}
 }
 function watchdog(){
  if(run?.musicPaused){clockProbe=null;if(keepCounting)attemptFinishSound();return;}
