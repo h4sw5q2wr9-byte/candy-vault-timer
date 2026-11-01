@@ -4,7 +4,7 @@
 
 Use the live website and select **Enter the Terminal**. The web build loads a small page and script, then fetches separately cached audio when you enter. For a single file that works offline, [download `standalone.html`](standalone.html); it embeds the audio, font, and artwork.
 
-Choose a gravestone preset or enter minutes and seconds, then select **Invoke**. Session naming and the intro-timing setting have been removed. The start remains fixed at 20 seconds into the intro. The interface is presented inside a physical CRT housing with a beveled bezel, inset amber glass, speaker vents, and a power indicator. An original embedded pixel font keeps text consistent across devices. Subtle scanlines, a slow sweep, cursor blink, and a screen-on animation respect reduced-motion settings. Gravestones and fitted text are checked at 320, 375, 390, 430, 768, and 1440 px. The portrait duration editor and running digits are centered, including long time values.
+Choose a gravestone preset or enter minutes and seconds, then select **Invoke**. The countdown starts at 20 seconds into the intro. The R.I.P.-inspired interface has an angular bronze cabinet, dark amber glass, gravestone cards, and a “Choose wisely” prompt. The terminal fills portrait screens; landscape puts the timer and controls side by side. An embedded pixel font and subtle CRT effects respect reduced-motion settings. Text containment is checked at 320–1440 px and landscape controls down to 667×375. The duration editor and running digits stay centered.
 
 ## Soundtrack
 
@@ -23,19 +23,20 @@ Choose a gravestone preset or enter minutes and seconds, then select **Invoke**.
 
 Media behavior follows three modes:
 
-- **Before zero:** supported OS controls pause/resume the timer and music together. Previous/next add/remove one minute; seeking changes elapsed time where supported.
+- **Before zero:** **Keep timer running when music pauses** is enabled by default and saved on the device. Other-media interruptions and OS pause silence the soundtrack while the wall-clock countdown continues. Play or **Resume music** seeks to the current soundtrack position. The explicit **Pause timer** button freezes both. Turn the setting off to restore OS pause/resume of timer and music together. Previous/next add/remove one minute; seeking changes elapsed time where supported.
 - **At zero and during the ending:** timer edit, seek, skip, and pause actions are unregistered. The ending continues. Stale timer actions cannot move the finished countdown.
 - **When R.I.P. returns:** play/pause controls only R.I.P. music. Seeking, skipping, and timer editing stay unavailable. Pausing does not set the finished timer to paused or restart it. The small Pause/Play button beside the music label offers the same music-only control.
 
 In Settings, **Live media countdown** controls the title. When enabled, it shows the short remaining time; when disabled it stays at the chosen duration, such as **20:00 timer**. The preference is saved on the device. Static mode avoids repeated metadata and position writes while the on-screen countdown and native progress continue. State changes, pause/resume, and seeking still publish accurate position snapshots. The app name stays on the secondary line. Progress is cleared at zero. The OS controls visual button availability; native pause events during the ending are neutralized, while native play/pause events during R.I.P. are honored.
 
-Elapsed time stays accurate in hidden tabs. Automatic recovery handles suspended or stalled clocks and audio output interruptions. Optional **Keep screen awake** is under Settings. Phone sleep, calls, browser closure, and OS policies can still interrupt sound.
+Elapsed time stays accurate in hidden tabs. With keep-counting enabled, the watchdog respects music pauses and does not compete with another app for audio. At zero the page makes one attempt to resume the ending at its current cue. If iOS suspends the page past the whole ending, it plays a short completion cue when the page wakes; blocked playback leaves **Resume music** available. A web page cannot guarantee a wake-up alarm while the OS suspends it. Automatic recovery still repairs unintentional stalls. Optional **Keep screen awake** is under Settings. Closing/reloading the page ends the current in-memory session.
 
 The audio cleanup uses stream copy, not lossy re-encoding: downloader metadata and never-played tails are removed. The complete original ambience tail is retained for its final handoff. R.I.P. stays byte-for-byte original to protect its gapless timing. Decoded source samples were checked against the originals with zero difference; the selected low-time EQ is a separate, temporary playback effect. Audio transfers are about 4.5% smaller. Playback uses source-matched 44.1 kHz stereo, a music content hint, and optional constraints disabling voice processing.
 
 ## Verification and source
 
 - `node verify.cjs`: gradual tick fade, unity gain except R.I.P., fixed start, lock-at-zero, music-only R.I.P. pause, cue alignment, matched loop points, recovery after multiple wraps, seeking, pause/resume, recovery, and duration validation.
+- Keep-counting checks cover saved/default preferences, native pause versus timer pause, external context interruptions, resumed soundtrack positions, a blocked finish-sound attempt, manual recovery, and a late completion cue.
 - `python browser-check.py`: Chromium playback, PCM signal, opaque artwork, short media title, grave-text containment across six widths, phone button visibility, centered duration and timer text, embedded pixel font, reduced-motion fallback, lock-at-zero, and music-only R.I.P. play/pause.
 - `python handoff-check.py`: renders the production scheduler and compares it with the approved D audio, including recovery during and after the EQ entrance. This listening-reference check requires the local audition file at `/workspace/candy-vault-tick-tests/D-together.f32`.
 - Edit `app.js`, `style.css`, or `shell.html`, then run `python build.py`. It verifies the audio-manifest hashes and emits `index.html` plus the small `app-runtime.js` for hosting, and the self-contained `standalone.html` for offline use. Keep `assets/audio/`, icons, the manifest, and generated files in the same project.

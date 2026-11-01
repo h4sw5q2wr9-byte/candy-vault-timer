@@ -36,7 +36,7 @@ The ending starts early underneath the low-time tail, preserving original positi
 
 # Controls and recovery
 
-Web Audio mixes the original recordings into a native HTML audio element through a MediaStream destination. Media Session and native events pause/resume the active timer. Active seeking shifts the shared wall clock; extending a timer rebuilds its remaining cues.
+Web Audio mixes the original recordings into a native HTML audio element through a MediaStream destination. By default, native pause silences only music and the deadline keeps advancing. The in-page Pause timer button freezes both. The saved Keep timer running when music pauses preference can restore native pause of timer and music together. Active seeking shifts the shared wall clock; extending a timer rebuilds its remaining cues.
 
 Timer actions are available only before D (zero). At D the app clears progress, unregisters timer actions, and rejects stale calls. Pause/reset buttons on the active timer also lock during the ending. Native pause events cannot stop that ending.
 
@@ -50,7 +50,9 @@ Playback is 44.1 kHz stereo with a music content hint and requests to disable vo
 
 An original 5×7-grid pixel alphabet is embedded as WOFF. The timer uses its constant six-cell glyph advance with no negative letter spacing, and is centered by intrinsic text width. Browser checks measure text-range centers for 00:00, 11:11, and 999:59 across portrait widths. The minute and second editor uses equal grid columns around the colon.
 
-The outer casing and dark inset glass are built with CSS borders and shadows. Backgrounds use linear fills rather than the earlier page-level radial gradients. The screen has a low-opacity pixel/scanline overlay, a slow scan sweep, a cursor blink, and a brief startup animation. Reduced-motion mode disables moving effects.
+The angular bronze casing and inset glass use CSS polygons, borders and shadows. The terminal fills portrait screens, and a compact landscape grid keeps controls beside the timer. The settings drawer scrolls within short viewports. Low-opacity scanlines, a slow sweep, cursor blink and startup animation respect reduced-motion preferences.
+
+Keep-counting mode stops scheduled audio and suspends the audio context while the wall clock continues. The watchdog respects this state. Resume music rebuilds the score at the current virtual time. Pause timer excludes its deliberate pause from the wall clock and preserves whether music was already silent. A timeout plus render/watchdog checks attempt the ending at zero; iOS suspension may delay that attempt. A late wake after the complete ending schedules a short cue from source position 7, then R.I.P., without altering timer zero. Playback rejection leaves a manual Resume music action and is not retried continuously. This remains an in-memory web timer, not a guaranteed OS alarm.
 
 # Performance build and media titles
 

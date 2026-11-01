@@ -31,6 +31,7 @@ with sync_playwright() as p:
   assert page.evaluate('async icon=>{const image=new Image();image.src=icon.src;await image.decode();return image.naturalWidth+\"x\"+image.naturalHeight===icon.sizes;}',icon)
  page.screenshot(path=str(root/'welcome-preview.png'))
  page.click('#enter');page.wait_for_selector('#welcome[hidden]',state='attached',timeout=30000);page.evaluate('document.fonts.ready');page.wait_for_timeout(500)
+ assert page.locator('#keepCounting').is_checked(),'Keep counting defaults on'
  assert len(audio_requests)==5,audio_requests
  page.screenshot(path=str(root/'desktop-preview.png'))
  print('Desktop:',page.evaluate('({context:ctx.state,paused:player.paused,stream:player.srcObject?.active,overflow:document.documentElement.scrollWidth>innerWidth})'))
@@ -67,9 +68,21 @@ with sync_playwright() as p:
  assert page.evaluate('Math.abs(run.deadline-runTime()-73)<.1')
  page.evaluate('window.__mediaActions.nexttrack()')
  assert page.evaluate('Math.abs(run.deadline-runTime()-13)<.1')
- # The real HTMLAudioElement pause/play events control the timer as OS media events do.
- page.evaluate('player.pause()');page.wait_for_timeout(200);assert page.evaluate('run.paused&&player.paused')
- page.evaluate('player.play()');page.wait_for_timeout(200);assert page.evaluate('!run.paused&&!player.paused')
+ # Default: other-media and native pause silence music while the timer advances.
+ page.evaluate('player.pause()');page.wait_for_timeout(200);assert page.evaluate('run.musicPaused&&!run.paused&&player.paused')
+ silent_time=page.evaluate('runTime()');page.wait_for_timeout(400);assert page.evaluate('runTime()')>silent_time+.3
+ page.evaluate('watchdog();onVisibility()');page.wait_for_timeout(100);assert page.evaluate('run.musicPaused&&player.paused')
+ assert page.locator('#resumeAudio').is_visible()
+ page.locator('#resumeAudio').click();page.wait_for_timeout(150);assert page.evaluate('!run.musicPaused&&!run.paused&&!player.paused')
+ # The explicit in-app button still pauses the whole timer.
+ page.click('#pause');page.wait_for_function('run.paused&&!changingTimer');frozen=page.evaluate('runTime()');page.wait_for_timeout(200);assert abs(page.evaluate('runTime()')-frozen)<.01
+ page.click('#pause');page.wait_for_function('!run.paused&&!changingTimer')
+ # Turning the saved setting off restores native pause-timer behavior.
+ page.locator('.settings').evaluate('(node)=>node.open=true');page.uncheck('#keepCounting');page.locator('.settings').evaluate('(node)=>node.open=false')
+ assert page.evaluate("localStorage.getItem('candyVault.keepCounting')==='false'")
+ page.evaluate('player.pause()');page.wait_for_timeout(150);assert page.evaluate('run.paused&&!run.musicPaused&&player.paused')
+ page.evaluate('player.play()');page.wait_for_timeout(150);assert page.evaluate('!run.paused&&!player.paused')
+ page.locator('.settings').evaluate('(node)=>node.open=true');page.check('#keepCounting');page.locator('.settings').evaluate('(node)=>node.open=false')
  # Confirm non-zero PCM reaches the actual native media element transport.
  peak=page.evaluate('(()=>{const a=new Float32Array(analyser.fftSize);analyser.getFloatTimeDomainData(a);return Math.max(...a.map(Math.abs))})()')
  print('Signal:',peak);assert peak>0
@@ -77,7 +90,9 @@ with sync_playwright() as p:
  assert page.evaluate("ctx.sampleRate===44100&&player.srcObject.getAudioTracks()[0].contentHint==='music'")
  page.screenshot(path=str(root/'running-preview.png'))
  # At zero every timer action is unavailable and the ending continues.
+ page.evaluate('player.pause()');page.wait_for_timeout(100);assert page.evaluate('run.musicPaused')
  page.evaluate('window.__staleSeek=window.__mediaActions.seekto;run.wallStartedAt=Date.now()-(run.deadline-run.origin)*1000;scheduleRun();render()')
+ page.wait_for_function('run.finishAttempted&&!run.musicPaused&&!player.paused')
  assert page.evaluate('Object.values(window.__mediaActions).every(handler=>handler===null)&&window.__mediaPosition===undefined')
  assert page.locator('#pause').is_disabled();assert page.locator('#reset').is_disabled()
  page.evaluate('window.__staleSeek({seekTime:0});player.pause()');page.wait_for_timeout(100)
@@ -109,9 +124,20 @@ with sync_playwright() as p:
  for width in [320,375,390,430]:
   page.set_viewport_size({'width':width,'height':812})
   assert page.evaluate('''(()=>{const panel=document.querySelector('#runPanel').getBoundingClientRect(),timer=document.querySelector('#timer');return ['00:00','11:11','999:59'].every(value=>{timer.textContent=value;const range=document.createRange();range.selectNodeContents(timer);const digits=range.getBoundingClientRect();return Math.abs(panel.x+panel.width/2-digits.x-digits.width/2)<.75&&digits.width<=panel.width;});})()'''),f'Timer centering or width {width}'
+ for width,height in [(844,390),(932,430),(1280,590),(667,375)]:
+  page.set_viewport_size({'width':width,'height':height});page.evaluate('render()')
+  assert not page.evaluate('document.documentElement.scrollWidth>innerWidth'),f'Landscape horizontal overflow {width}'
+  assert page.locator('#pause').bounding_box()['y']+page.locator('#pause').bounding_box()['height']<=height,f'Landscape pause clipped {width}'
+  assert page.locator('#reset').bounding_box()['y']+page.locator('#reset').bounding_box()['height']<=height,f'Landscape reset clipped {width}'
+  assert page.locator('#timer').bounding_box()['y']>=0,f'Landscape timer clipped {width}'
+  if width==844:page.screenshot(path=str(root/'landscape-preview.png'),full_page=True)
+ page.set_viewport_size({'width':430,'height':932});page.evaluate('render()');page.screenshot(path=str(root/'tall-phone-preview.png'),full_page=True)
+ page.locator('.settings').evaluate('(node)=>node.open=true');page.screenshot(path=str(root/'settings-preview.png'),full_page=True)
+ assert page.locator('#keepCounting').is_visible()
+ page.locator('.settings').evaluate('(node)=>node.open=false')
  page.emulate_media(reduced_motion='reduce');assert page.evaluate("getComputedStyle(document.querySelector('.screen-sweep')).display==='none'")
  assert page.evaluate("document.fonts.check('20px \"Vault Pixels\"')")
- page.locator('.settings').evaluate('(node)=>node.open=true');page.uncheck('#liveMediaTitle');page.reload();assert not page.locator('#liveMediaTitle').is_checked()
+ page.locator('.settings').evaluate('(node)=>node.open=true');page.uncheck('#liveMediaTitle');page.uncheck('#keepCounting');page.reload();assert not page.locator('#liveMediaTitle').is_checked();assert not page.locator('#keepCounting').is_checked()
  assert page.title()=='The Candy Vault Timer'
  offline=browser.new_page();offline.goto(f'http://127.0.0.1:{server.server_port}/standalone.html');offline.context.set_offline(True)
  offline.click('#enter');offline.wait_for_selector('#welcome[hidden]',state='attached',timeout=30000)
