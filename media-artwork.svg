@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<defs><radialGradient id="bg"><stop stop-color="#3c1c10"/><stop offset="1" stop-color="#0e0706"/></radialGradient><linearGradient id="gold" x2="0" y2="1"><stop stop-color="#ffdd72"/><stop offset="1" stop-color="#ffac1c"/></linearGradient><pattern id="grain" width="5" height="5" patternUnits="userSpaceOnUse"><path d="M0 5L5 0" stroke="#c75b20" stroke-opacity=".08" stroke-width="1"/></pattern></defs>
+<rect width="512" height="512" fill="#1b0c09"/>
+<path d="M54 29H457L488 62V447L453 484H57L25 450V66Z" fill="url(#bg)" stroke="#934b2b" stroke-width="4"/>
+<path d="M54 29H457L488 62V447L453 484H57L25 450V66Z" fill="url(#grain)"/>
+<text x="256" y="227" text-anchor="middle" fill="#8a3a1b" font-family="Arial Black,Arial,sans-serif" font-weight="900" font-style="italic" font-size="129" letter-spacing="-6" transform="translate(5 6)">R.I.P.</text>
+<text x="256" y="227" text-anchor="middle" fill="url(#gold)" font-family="Arial Black,Arial,sans-serif" font-weight="900" font-style="italic" font-size="129" letter-spacing="-6">R.I.P.</text>
+<g fill="none" stroke="#d67835" stroke-width="2.5"><path d="M98 356L104 343L111 339V293Q111 261 139 259Q167 262 167 293V339L174 343L180 356Z"/><path d="M211 356L218 343L225 340V289L235 274L256 264L276 274L287 289V340L294 343L301 356Z"/><path d="M332 356L338 343L345 340V305L334 301V290L345 286L354 269L364 264V253H356V246H364V236H372V246H380V253H372V264L384 270L393 286L404 290V301L393 305V340L400 343L406 356Z"/></g>
+<path d="M75 372H437" stroke="#a9542b" stroke-width="2" stroke-dasharray="5 5"/>
+<text x="256" y="408" text-anchor="middle" fill="#ffd284" font-family="monospace" font-size="18" letter-spacing="4">THE CANDY VAULT</text>
+<text x="256" y="437" text-anchor="middle" fill="#b77a4c" font-family="monospace" font-size="11" letter-spacing="3">YOUR TIME. YOUR SOUNDTRACK.</text>
+</svg>
