@@ -12,7 +12,7 @@ Choose a gravestone preset or enter minutes and seconds, then select **Invoke**.
 - All other tracks use full track gain. The master volume defaults to 100%; users can lower it with the volume slider. Transition fades still apply.
 - The countdown begins at intro position **20 seconds**.
 - Ambience enters under the ticks at **21.54 seconds**, rising over five seconds. At the same point, the intro begins a **5.26-second gradual fade**, making successive ticks softer through its end at 26.80 seconds.
-- Ambience uses a six-second correlation-compensated loop blend and a six-second crossfade into low-time music.
+- Ambience preserves its original opening, then repeats a matched musical section from original 13.145714 to 79.683696 seconds (a 66.537982-second cycle). There is no per-loop fade or sample remix. The initial five-second fade-in and six-second transition into low-time music remain.
 - The ending begins seven seconds before zero, using original MP3 timestamps. At zero, low time ends and the ending reaches original position **7 seconds**.
 - Setup returns at original ending position **17 seconds**. When the audible ending finishes at 31.67 seconds, the original R.I.P. loop fades in over 1.6 seconds.
 - Escape_music remains removed. Internal pauses in the ending remain intact.
@@ -33,7 +33,7 @@ Original audio remains unchanged. Playback uses source-matched 44.1 kHz stereo, 
 
 ## Verification and source
 
-- `node verify.cjs`: gradual tick fade, unity gain except R.I.P., fixed start, lock-at-zero, music-only R.I.P. pause, cue alignment, loop blending, seeking, pause/resume, recovery, and duration validation.
+- `node verify.cjs`: gradual tick fade, unity gain except R.I.P., fixed start, lock-at-zero, music-only R.I.P. pause, cue alignment, matched loop points, recovery after multiple wraps, seeking, pause/resume, recovery, and duration validation.
 - `python browser-check.py`: Chromium playback, PCM signal, opaque artwork, short media title, grave-text containment across six widths, phone button visibility, centered duration and timer text, embedded pixel font, reduced-motion fallback, lock-at-zero, and music-only R.I.P. play/pause.
 - Edit `app.js`, `style.css`, or `shell.html`, then run `python build.py` to rebuild the standalone HTML while preserving embedded original audio.
 
