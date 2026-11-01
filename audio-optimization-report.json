@@ -54,14 +54,14 @@
   "cutscene": {
     "path": "assets/audio/cutscene.ogg",
     "original_bytes": 540894,
-    "optimized_bytes": 509585,
+    "optimized_bytes": 241010,
     "original_frames": 1461797,
-    "optimized_frames": 1402688,
+    "optimized_frames": 754752,
     "sample_rate": 44100,
     "channels": 2,
-    "duration": 31.806984126984126,
-    "verified_frames": 1396647,
+    "duration": 17.114557823129253,
+    "verified_frames": 749700,
     "max_sample_error": 0.0,
-    "sha256": "aa6bdcf0b61d1cbb397820c361b2e7650c0db06bb6ee1dcfe3f7b3ba3dd901c3"
+    "sha256": "14ef5c0c012c22eead04beba06472618a2652bfb9aae5d2f626340e671f4746e"
   }
 }

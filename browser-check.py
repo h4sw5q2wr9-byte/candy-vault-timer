@@ -70,10 +70,26 @@ with sync_playwright() as p:
  assert page.evaluate('Math.abs(run.deadline-runTime()-13)<.1')
  # Default: other-media and native pause silence music while the timer advances.
  page.evaluate('player.pause()');page.wait_for_timeout(200);assert page.evaluate('run.musicPaused&&!run.paused&&player.paused')
+ assert page.evaluate("navigator.mediaSession.playbackState==='paused'&&navigator.mediaSession.metadata.title.startsWith('Music paused')")
  silent_time=page.evaluate('runTime()');page.wait_for_timeout(400);assert page.evaluate('runTime()')>silent_time+.3
  page.evaluate('watchdog();onVisibility()');page.wait_for_timeout(100);assert page.evaluate('run.musicPaused&&player.paused')
  assert page.locator('#resumeAudio').is_visible()
  page.locator('#resumeAudio').click();page.wait_for_timeout(150);assert page.evaluate('!run.musicPaused&&!run.paused&&!player.paused')
+ # A background native Play must not wait for an unresolved suspend/resume promise.
+ page.evaluate('window.__mediaActions.previoustrack()')
+ result=page.evaluate('''()=>{
+  ctx.savedSuspend=ctx.suspend.bind(ctx);ctx.savedResume=ctx.resume.bind(ctx);player.savedPlay=player.play.bind(player);
+  ctx.suspend=()=>new Promise(()=>{});window.__mediaActions.pause();
+  ctx.resume=()=>new Promise(resolve=>{window.__releaseResume=resolve;});
+  player.play=()=>{window.__playedInHandler=true;ctx.savedResume();window.__releaseResume();return player.savedPlay();};
+  Object.defineProperty(document,'visibilityState',{configurable:true,get:()=> 'hidden'});
+  window.__nativePlay=window.__mediaActions.play();return window.__playedInHandler===true;
+ }''')
+ assert result,'Native Play must call the element before returning from the gesture'
+ page.wait_for_function('!run.musicPaused&&!player.paused')
+ page.wait_for_timeout(150)
+ assert page.evaluate("navigator.mediaSession.playbackState==='playing'"),page.evaluate("({state:navigator.mediaSession.playbackState,context:ctx.state,starting:transportStarting,musicPaused:run.musicPaused,resuming:run.musicResuming,paused:player.paused,mode:mediaMode(),remaining:run.deadline-runTime()})")
+ page.evaluate('ctx.suspend=ctx.savedSuspend;ctx.resume=ctx.savedResume;player.play=player.savedPlay;delete document.visibilityState;')
  # The explicit in-app button still pauses the whole timer.
  page.click('#pause');page.wait_for_function('run.paused&&!changingTimer');frozen=page.evaluate('runTime()');page.wait_for_timeout(200);assert abs(page.evaluate('runTime()')-frozen)<.01
  page.click('#pause');page.wait_for_function('!run.paused&&!changingTimer')
@@ -100,7 +116,7 @@ with sync_playwright() as p:
  # Seek the playback clock through the 17-second return cue, then into the RIP handoff.
  page.evaluate('run.wallStartedAt=Date.now()-(run.returnAt-run.origin+.1)*1000;scheduleRun();render()')
  assert page.locator('#setup').is_visible();assert page.locator('#runPanel').is_hidden()
- assert page.evaluate('run.returned&&!run.completed')
+ assert page.evaluate('run.returned&&run.completed')
  page.fill('#minutes','25');assert page.evaluate('run.total')>=15
  page.evaluate('run.wallStartedAt=Date.now()-(run.end-run.origin+.2)*1000;scheduleRun();render()')
  page.wait_for_timeout(200);assert page.evaluate('run.completed&&!player.paused')

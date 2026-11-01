@@ -3,7 +3,7 @@ const $=id=>document.getElementById(id);
 const APP_NAME='The Candy Vault Timer';
 let liveMediaTitle=true;try{liveMediaTitle=localStorage.getItem('candyVault.liveMediaTitle')!=='false';}catch{}
 let keepCounting=true;try{keepCounting=localStorage.getItem('candyVault.keepCounting')!=='false';}catch{}
-let finishWake=null,musicTask=Promise.resolve(),changingTimer=false;
+let finishWake=null,musicTask=Promise.resolve(),changingTimer=false,transportStarting=false,musicGeneration=0,cancelActivation=null;
 function setText(element,value){if(element.textContent!==value)element.textContent=value;}
 function setPageTitle(value){if(document.title!==value)document.title=value;}
 const ui={};for(const id of ['timer','sub','status','bar','setup','start','pause','reset','hint','minutes','seconds','nowPlaying','screenLabel','resumeAudio','runPanel'])ui[id]=$(id);
@@ -12,7 +12,7 @@ const MEDIA_ARTWORK=[{"src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMAA
 const AMBIENCE_LOOP={start:579726/44100,end:3514051/44100};
 // Approved D mix: long overlap, with melody and ticks entering together.
 const HANDOFF={duration:8,midpoint:5.085170068027211,eqTail:.2};
-const TRACK_EDITS={intro:{start:0,end:26.8},close:{start:0,end:123.75},cutscene:{start:0,end:31.67}};
+const TRACK_EDITS={intro:{start:0,end:26.8},close:{start:0,end:123.75},cutscene:{start:0,end:17}};
 const sources=new Set();let ctx,master,analyser,mediaDestination,player,buffers,loading,setupSource,run=null,resetting=false,repairing=false,setupPaused=false,setupPausedAt=0,transportChanging=false,lastSignalAt=Date.now(),lastRepairAt=0,stallAt=0,clockProbe=null;
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 const fmt=seconds=>{const n=Math.max(0,Math.ceil(seconds-1e-6));return String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');};
@@ -67,8 +67,8 @@ function createTransport(){
  mediaDestination=ctx.createMediaStreamDestination();mediaDestination.channelCount=2;mediaDestination.channelCountMode='explicit';analyser.connect(mediaDestination);
  for(const track of mediaDestination.stream.getAudioTracks()){try{track.contentHint='music';if(track.applyConstraints)track.applyConstraints({channelCount:{ideal:2},sampleRate:{ideal:44100},autoGainControl:false,echoCancellation:false,noiseSuppression:false}).catch(()=>{});}catch{}}
  player=$('soundtrack');player.srcObject=mediaDestination.stream;player.volume=1;player.muted=false;player.playbackRate=1;player.defaultPlaybackRate=1;
- player.addEventListener('pause',onMediaPause);
- player.addEventListener('play',()=>{stallAt=0;onMediaPlay();});
+ player.addEventListener('pause',()=>onMediaPause(true));
+ player.addEventListener('play',()=>{stallAt=0;onMediaPlay(true);});
  player.addEventListener('playing',()=>{stallAt=0;});
  for(const event of ['stalled','waiting','error'])player.addEventListener(event,()=>{if(!stallAt)stallAt=Date.now();});
 }
@@ -132,7 +132,7 @@ function buildTimeline(r){
   plans.push({key:'closeIntro',at:closing,end:closing+buffers.closeIntro.duration,volume:1,envelope:handoffEnvelope()});
   plans.push({key:'close',at:closing+buffers.closeIntro.duration,end:closingEnd,offset:buffers.closeIntro.duration,volume:1,fadeOut:4,curve:'power'});
  }else plans.push({key:'close',at:closing,end:closingEnd,offset:Math.max(0,buffers.close.duration-closeLength),volume:1,fadeIn:Math.min(6,closeLength/3),fadeOut:Math.min(4,closeLength/2),curve:'power'});
- plans.push({key:'cutscene',at:cutscene,end,volume:1,fadeIn:.02,fadeOut:.15});
+ plans.push({key:'cutscene',at:cutscene,end,volume:1,fadeIn:.02,fadeOut:2});
  plans.push({key:'rip',at:end,end:Infinity,loop:true,volume:.22,fadeIn:1.6});
  Object.assign(r,{deadline,closingEnd,closing,ambienceStart,cutscene,returnAt,end,plans});
 }
@@ -158,8 +158,9 @@ let lastMediaKey='',lastPositionKey='',lastPositionAt=0;
 function syncMediaPanel(force=false){
  if(!ctx||!navigator.mediaSession)return;force=force||lastMediaKey==='';updateMediaControls();const r=run,t=r?runTime():0,active=r&&!r.returned,mode=mediaMode();
  const remaining=active?clamp(r.deadline-t,0,r.total):duration();
- const title=active?(liveMediaTitle?fmt(remaining)+' remaining':fmt(r.total)+' timer'):fmt(duration())+' ready';
- const artist=active?(r.paused?'Timer paused · '+APP_NAME:r.musicPaused?'Music paused · Timer running':t<r.countdown?'Opening · '+APP_NAME:APP_NAME):(mode==='rip'&&setupPaused?'R.I.P. paused · '+APP_NAME:r&&!r.completed?'Final scene · Prepare your next session':APP_NAME);
+ const clock=liveMediaTitle?fmt(remaining):fmt(r?.total||duration());
+ const title=active?(r.musicResuming?'Resuming · '+clock:r.musicPaused?'Music paused · '+clock:r.paused?'Timer paused · '+clock:liveMediaTitle?fmt(remaining)+' remaining':fmt(r.total)+' timer'):transportStarting?'Resuming music':setupPaused||r?.musicPaused?'R.I.P. paused':fmt(duration())+' ready';
+ const artist=active?(r.musicPaused?'Countdown continues · '+APP_NAME:r.paused?'Timer paused · '+APP_NAME:t<r.countdown?'Opening · '+APP_NAME:APP_NAME):(mode==='rip'&&setupPaused?'R.I.P. paused · '+APP_NAME:r&&!r.completed?'Final scene · Prepare your next session':APP_NAME);
  const position=active?clamp(t-r.countdown,0,r.total):0,key=[title,artist,active&&r.paused,mode].join('|');
  if(force||key!==lastMediaKey){
   lastMediaKey=key;
@@ -170,7 +171,7 @@ function syncMediaPanel(force=false){
  }
  // Native media progress advances on its own. Publish snapshots for state changes,
  // seeks, and occasional correction in live-title mode, not every screen refresh.
- const positionKey=[mode,Boolean(r&&t>=r.countdown),r?.total,r?.paused,r?.origin].join('|');
+ const positionKey=[mode,Boolean(r&&t>=r.countdown),r?.total,r?.paused,r?.musicPaused,r?.musicResuming,r?.origin].join('|');
  if(force||positionKey!==lastPositionKey||(liveMediaTitle&&mode==='timer'&&Date.now()-lastPositionAt>=10000)){
   lastPositionKey=positionKey;lastPositionAt=Date.now();
   try{if(navigator.mediaSession.setPositionState){if(mode==='timer'&&t>=r.countdown)navigator.mediaSession.setPositionState({duration:r.total,position,playbackRate:1});else navigator.mediaSession.setPositionState();}}catch{}
@@ -184,57 +185,79 @@ function armFinish(){
  const r=run;finishWake=setTimeout(()=>{finishWake=null;if(run!==r||r.paused)return;if(runTime()<r.deadline){armFinish();return;}if(r.musicPaused)attemptFinishSound();},Math.max(0,(r.deadline-runTime())*1000));
 }
 function attemptFinishSound(){
- if(!run||run.paused||setupPaused||!run.musicPaused||run.finishAttempted||runTime()<run.deadline)return;
+ if(!run||run.paused||run.musicResuming||setupPaused||!run.musicPaused||run.finishAttempted||runTime()<run.deadline)return;
  run.finishAttempted=true;setMusicPaused(false,true);
 }
-function onMediaPause(){
- if(transportChanging)return;const mode=mediaMode();
+function onMediaPause(fromElement=false){
+ if(transportChanging||(fromElement===true&&!player.paused))return;const mode=mediaMode();
  if(mode==='ending'){keepEndingPlaying();return;}
  if(mode==='rip')return pauseSetup(true);
  if(run&&!run.paused)return keepCounting?setMusicPaused(true):setPaused(true);
 }
-function onMediaPlay(){
- if(transportChanging)return;const mode=mediaMode();
- if(mode==='rip'){if(run?.musicPaused)return setMusicPaused(false,true);if(setupPaused)return pauseSetup(false);mediaState('playing');return;}
+function onMediaPlay(fromElement=false){
+ if(transportChanging||(fromElement===true&&(transportStarting||player.paused)))return;const mode=mediaMode();
+ if(mode==='rip'){if(run?.musicPaused)return setMusicPaused(false,true);if(fromElement!==true||setupPaused||ctx.state!=='running'||player.paused||transportStarting){if(!setupPaused){setupPaused=true;setupPausedAt=Date.now();}return pauseSetup(false);}mediaState('playing');return;}
  if(mode==='ending'){if(run?.musicPaused)return setMusicPaused(false,true);keepEndingPlaying();return;}
  if(run?.paused){run.musicPaused=false;return setPaused(false);}
- return run?.musicPaused?setMusicPaused(false):recoverAudio();
+ if(fromElement===true&&!run?.musicPaused&&ctx.state==='running'){mediaState('playing');return;}
+ return setMusicPaused(false);
+}
+function callNative(fn){try{return Promise.resolve(fn());}catch(error){return Promise.reject(error);}}
+function activateTransport(){
+ // Both native calls must run inside the original media-control gesture.
+ // WebKit may leave resume() pending; native playing/state events can also
+ // confirm that the stream and context have actually restarted.
+ if(cancelActivation)cancelActivation();
+ return new Promise((resolve,reject)=>{
+  let done=false,played=false;
+  const clean=()=>{player.removeEventListener?.('playing',playing);ctx.removeEventListener?.('statechange',check);if(cancelActivation===cancel)cancelActivation=null;};
+  const fail=error=>{if(done)return;done=true;clean();reject(error);};
+  const check=()=>{if(!done&&played&&ctx.state==='running'&&!player.paused){done=true;clean();resolve();}};
+  const playing=()=>{played=true;check();},cancel=()=>fail(new Error('Playback request replaced'));
+  cancelActivation=cancel;player.addEventListener('playing',playing);ctx.addEventListener?.('statechange',check);
+  try{if(navigator.audioSession)navigator.audioSession.type='playback';}catch{}
+  const resume=callNative(()=>ctx.resume()),play=callNative(()=>player.play());
+  resume.then(check,fail);play.then(playing,fail);
+ });
+}
+function suspendTransport(){
+ if(cancelActivation)cancelActivation();
+ const previous=transportChanging;transportChanging=true;
+ try{player.pause();callNative(()=>ctx.suspend()).catch(()=>{});}finally{transportChanging=previous;}
 }
 function setMusicPaused(paused,finish=false){
- if(!ctx||!run||run.paused||(mediaMode()!=='timer'&&!(finish&&!paused)))return musicTask;
- const r=run;if(r.musicPaused===paused)return musicTask;r.musicPaused=paused;
- if(paused)stopAll();lastMediaKey='';render();armFinish();
- musicTask=musicTask.catch(()=>{}).then(async()=>{
-  if(run!==r||r.paused)return;transportChanging=true;
-  try{
-   if(r.musicPaused){player.pause();await ctx.suspend();}
-   else{
-    if(setupPaused){r.wallStartedAt+=Date.now()-setupPausedAt;setupPaused=false;setupPausedAt=0;}
-    await ctx.resume();if(run!==r||r.paused)return;
-    const t=runTime();if(finish&&t>=r.end&&!r.lateAlertEnd){const end=t+8;r.plans=r.plans.filter(p=>p.key!=='rip');r.plans.push({key:'cutscene',at:t,end,offset:7,volume:1,fadeIn:.02,fadeOut:.15},{key:'rip',at:end,end:Infinity,loop:true,volume:.22,fadeIn:1.6});r.lateAlertEnd=end;}
-    r.audioInterrupted=false;scheduleRun();await player.play();level();clockProbe=null;
-   }
-  }catch{if(run===r){r.musicPaused=true;stopAll();setText(ui.hint,'Tap Resume music to reconnect.');}}
-  finally{transportChanging=false;lastMediaKey='';updateMediaControls(true);render();}
- });return musicTask;
+ if(!ctx||!run||run.paused||(mediaMode()!=='timer'&&!(finish&&!paused)))return Promise.resolve();
+ const r=run;if(paused&&r.musicPaused&&!r.musicResuming)return Promise.resolve();
+ const generation=++musicGeneration;r.musicPaused=true;r.musicResuming=!paused;transportStarting=!paused;
+ if(paused){stopAll();suspendTransport();lastMediaKey='';updateMediaControls(true);syncMediaPanel(true);render();armFinish();return musicTask=Promise.resolve();}
+ if(setupPaused){r.wallStartedAt+=Date.now()-setupPausedAt;setupPaused=false;setupPausedAt=0;}
+ scheduleRun(false,true);lastMediaKey='';updateMediaControls(true);syncMediaPanel(true);render();
+ const previous=transportChanging;transportChanging=true;const activation=activateTransport();transportChanging=previous;
+ return musicTask=activation.then(()=>{
+  if(generation!==musicGeneration||run!==r||r.paused)return;
+  const t=runTime();if(finish&&t>=r.end){const end=t+buffers.cutscene.duration-7;r.plans=r.plans.filter(p=>p.key!=='rip'&&!p.lateAlert);r.plans.push({key:'cutscene',at:t,end,offset:7,volume:1,fadeIn:.02,fadeOut:2,lateAlert:true},{key:'rip',at:end,end:Infinity,loop:true,volume:.22,fadeIn:1.6});r.lateAlertEnd=end;}
+  r.musicPaused=false;r.musicResuming=false;transportStarting=false;r.audioInterrupted=false;scheduleRun();level();clockProbe=null;
+ }).catch(()=>{if(generation===musicGeneration&&run===r){r.musicPaused=true;r.musicResuming=false;transportStarting=false;stopAll();}}).finally(()=>{
+  if(generation===musicGeneration){lastMediaKey='';updateMediaControls(true);syncMediaPanel(true);render();}
+ });
 }
-function scheduleRun(keepSetup=false){
- armFinish();if(!run||run.paused||run.musicPaused)return;const r=run,t=runTime();if(!keepSetup)stopAll();r.scheduledVirtual=t;r.scheduledAudio=ctx.currentTime;
+function scheduleRun(keepSetup=false,allowSilent=false){
+ armFinish();if(!run||run.paused||(run.musicPaused&&!allowSilent))return;const r=run,t=runTime();if(!keepSetup)stopAll();r.scheduledVirtual=t;r.scheduledAudio=ctx.currentTime;
  for(const plan of r.plans){if(t>=plan.end)continue;const elapsed=Math.max(0,t-plan.at),at=ctx.currentTime+Math.max(0,plan.at-t);let offset=(plan.offset||0)+elapsed;if(plan.loop){if(plan.key==='ambience')offset=ambienceOffset(offset);else offset%=buffers[plan.key].duration;}track(plan.key,at,{...plan,offset,length:plan.end-Math.max(t,plan.at),elapsed});}
 }
 function audioStateChanged(){
- if(!run||run.paused||run.musicPaused||setupPaused||repairing||transportChanging)return;if(ctx.state==='running'){if(run.audioInterrupted){run.audioInterrupted=false;scheduleRun();}}else if(ctx.state==='suspended'||ctx.state==='interrupted'){if(keepCounting&&mediaMode()==='timer'&&(ctx.state==='interrupted'||player.paused))setMusicPaused(true);else{run.audioInterrupted=true;recoverAudio();}}render();
+ if(run?.paused||run?.musicPaused||setupPaused||repairing||transportChanging||transportStarting)return;if(ctx.state==='interrupted'&&mediaMode()==='rip'){pauseSetup(true);return;}if(!run)return;if(ctx.state==='running'){if(run.audioInterrupted){run.audioInterrupted=false;scheduleRun();}}else if(ctx.state==='suspended'||ctx.state==='interrupted'){if(keepCounting&&mediaMode()==='timer'&&(ctx.state==='interrupted'||player.paused))setMusicPaused(true);else{run.audioInterrupted=true;recoverAudio();}}render();
 }
 async function recoverAudio(force=false){
- if(!ctx||repairing||run?.paused||run?.musicPaused||setupPaused)return;repairing=true;const currentRun=run;
+ if(!ctx||repairing||transportStarting||run?.paused||run?.musicPaused||setupPaused)return;repairing=true;const currentRun=run;
  try{
-  if(force||stallAt&&Date.now()-stallAt>3000){transportChanging=true;player.pause();await ctx.suspend();await ctx.resume();transportChanging=false;stallAt=0;if(run===currentRun){if(run)scheduleRun();else{stopAll();setupMusic();}}}
-  else if(ctx.state!=='running')await ctx.resume();
+  if(force||stallAt&&Date.now()-stallAt>3000){transportChanging=true;player.pause();callNative(()=>ctx.suspend()).catch(()=>{});const activation=activateTransport();transportChanging=false;await activation;stallAt=0;if(run===currentRun){if(run)scheduleRun();else{stopAll();setupMusic();}}}
+  else if(ctx.state!=='running'||player.paused){const previous=transportChanging;transportChanging=true;const activation=activateTransport();transportChanging=previous;await activation;}
   if(run!==currentRun)return;
   player.muted=false;player.volume=1;if(player.paused||force)await player.play();level();
   if(run){const expected=run.scheduledVirtual+(ctx.currentTime-run.scheduledAudio);if(run.audioInterrupted||Math.abs(runTime()-expected)>.25){run.audioInterrupted=false;scheduleRun();}}
   else if(!setupSource)setupMusic();
- }catch{if(run)run.audioInterrupted=true;}finally{transportChanging=false;repairing=false;render();}
+ }catch{if(run){run.audioInterrupted=true;if(keepCounting&&mediaMode()==='timer')setMusicPaused(true);}}finally{transportChanging=false;repairing=false;render();}
 }
 function watchdog(){
  if(run?.musicPaused){clockProbe=null;if(keepCounting)attemptFinishSound();return;}
@@ -254,7 +277,7 @@ let lastControlMode=null;
 function mediaMode(){if(!run)return 'rip';const t=runTime();return t<run.deadline?'timer':t<run.end?'ending':'rip';}
 function mediaControlsEnabled(){return mediaMode()==='timer';}
 function updateMediaControls(force=false){
- if(!ctx||!navigator.mediaSession)return;const mode=mediaMode();if(!force&&mode===lastControlMode)return;lastControlMode=mode;
+ if(!ctx||!navigator.mediaSession)return;const mode=mediaMode();mediaState(mode==='timer'?(run.paused||run.musicPaused||transportStarting?'paused':'playing'):mode==='rip'?(setupPaused||run?.musicPaused||transportStarting?'paused':'playing'):'none');if(!force&&mode===lastControlMode)return;lastControlMode=mode;
  const timerAction=fn=>details=>{if(mediaControlsEnabled())return fn(details);};
  const handlers={pause:onMediaPause,play:onMediaPlay,stop:()=>keepCounting?setMusicPaused(true):ui.reset.onclick(),seekto:details=>seekTimer(details.seekTime),seekbackward:details=>adjustTimer(Number.isFinite(details?.seekOffset)?details.seekOffset:30),seekforward:details=>adjustTimer(-(Number.isFinite(details?.seekOffset)?details.seekOffset:30)),previoustrack:()=>adjustTimer(60),nexttrack:()=>adjustTimer(-60)};
  for(const [action,handler] of Object.entries(handlers)){
@@ -268,7 +291,7 @@ function keepEndingPlaying(){
  if(mediaMode()!=='ending'||run?.musicPaused||ctx.state!=='running'||transportChanging)return;
  transportChanging=true;player.play().catch(()=>{}).finally(()=>{transportChanging=false;mediaState('none');});
 }
-function syncMusicButton(){const visible=Boolean(ctx&&buffers&&mediaMode()==='rip'),paused=setupPaused||run?.musicPaused;$('musicPause').hidden=!visible;if(visible){$('musicPause').textContent=paused?'PLAY':'PAUSE';$('musicPause').setAttribute('aria-label',paused?'Resume music':'Pause R.I.P. music');if(paused){setText(ui.status,'MUSIC PAUSED');setText(ui.nowPlaying,'R.I.P. · Paused');}else if(!run){setText(ui.status,'READY');setText(ui.nowPlaying,'R.I.P. · Ready when you are');}}}
+function syncMusicButton(){const visible=Boolean(ctx&&buffers&&mediaMode()==='rip'),paused=setupPaused||run?.musicPaused||transportStarting;$('musicPause').hidden=!visible;if(visible){$('musicPause').textContent=paused?'PLAY':'PAUSE';$('musicPause').setAttribute('aria-label',paused?'Resume music':'Pause R.I.P. music');if(paused){setText(ui.status,'MUSIC PAUSED');setText(ui.nowPlaying,'R.I.P. · Paused');}else if(!run){setText(ui.status,'READY');setText(ui.nowPlaying,'R.I.P. · Ready when you are');}}}
 
 function installMediaControls(){
  try{if(navigator.audioSession)navigator.audioSession.type='playback';}catch{}
@@ -276,27 +299,25 @@ function installMediaControls(){
  try{if(window.MediaMetadata)navigator.mediaSession.metadata=new window.MediaMetadata({title:'The Candy Vault Timer',artist:'R.I.P. · Revenant Interface Program',album:'The Candy Vault',artwork:MEDIA_ARTWORK});}catch{}
  updateMediaControls(true);
  syncMediaPanel(true);
+ navigator.audioSession?.addEventListener?.('statechange',()=>{if(navigator.audioSession.state!=='interrupted'||transportChanging||transportStarting||repairing)return;if(mediaMode()==='timer'&&!run.paused){keepCounting?setMusicPaused(true):setPaused(true);}else if(mediaMode()==='rip')pauseSetup(true);});
 }
-function mediaState(state){try{if(navigator.mediaSession)navigator.mediaSession.playbackState=mediaMode()==='ending'?'none':state;}catch{}}
-async function pauseSetup(paused){
- if(!ctx||mediaMode()!=='rip'||setupPaused===paused)return;transportChanging=true;
- try{
-  if(paused){if(run){const needsSetup=!run.returned||!run.completed;run.completed=true;run.returned=true;if(needsSetup)setupView();}setupPausedAt=Date.now();setupPaused=true;ui.resumeAudio.hidden=true;player.pause();await ctx.suspend();mediaState('paused');}
-  else{await ctx.resume();await player.play();if(run&&run.completed)run.wallStartedAt+=Date.now()-setupPausedAt;setupPaused=false;setupPausedAt=0;clockProbe=null;level();mediaState('playing');}
-  lastMediaKey='';render();
- }catch{error('Tap Play to resume R.I.P. music.');}finally{transportChanging=false;}
+function mediaState(state){try{if(navigator.mediaSession){const next=mediaMode()==='ending'?'none':state==='playing'&&(transportStarting||ctx?.state!=='running'||player?.paused)?'paused':state;if(navigator.mediaSession.playbackState!==next)navigator.mediaSession.playbackState=next;}}catch{}}
+function pauseSetup(paused){
+ if(!ctx||mediaMode()!=='rip'||(setupPaused===paused&&!transportStarting))return Promise.resolve();const generation=++musicGeneration;
+ if(paused){transportStarting=false;if(run){const needsSetup=!run.returned||!run.completed;run.completed=true;run.returned=true;run.musicResuming=false;if(needsSetup)setupView();}setupPausedAt=Date.now();setupPaused=true;ui.resumeAudio.hidden=true;suspendTransport();lastMediaKey='';updateMediaControls(true);syncMediaPanel(true);render();return Promise.resolve();}
+ if(run&&run.completed)run.wallStartedAt+=Date.now()-setupPausedAt;setupPaused=false;setupPausedAt=0;transportStarting=true;
+ const previous=transportChanging;transportChanging=true;const activation=activateTransport();transportChanging=previous;
+ lastMediaKey='';updateMediaControls(true);syncMediaPanel(true);render();
+ return activation.then(()=>{if(generation!==musicGeneration)return;transportStarting=false;clockProbe=null;level();}).catch(()=>{if(generation===musicGeneration){transportStarting=false;setupPaused=true;setupPausedAt=Date.now();}}).finally(()=>{if(generation===musicGeneration){lastMediaKey='';updateMediaControls(true);syncMediaPanel(true);render();}});
 }
-async function setPaused(paused){
- if(!mediaControlsEnabled()||!run||run.paused===paused||changingTimer)return;changingTimer=true;ui.pause.disabled=true;const r=run;
- if(paused){r.pausedAt=Date.now();r.paused=true;armFinish();}
- try{
-  await musicTask;transportChanging=true;if(run!==r)return;
-  if(paused){player.pause();await releaseWake();await ctx.suspend();}
-  else{r.wallStartedAt+=Date.now()-r.pausedAt;r.paused=false;r.audioInterrupted=false;if(!r.musicPaused){await ctx.resume();scheduleRun();await player.play();level();}else armFinish();requestWake();}
- }catch{error('Tap Resume music to reconnect.');}
- finally{transportChanging=false;changingTimer=false;updateMediaControls(true);render();}
+function setPaused(paused){
+ if(!mediaControlsEnabled()||!run||run.paused===paused)return Promise.resolve();const r=run;
+ if(paused){++musicGeneration;if(r.musicResuming)r.musicPaused=false;r.musicResuming=false;transportStarting=false;r.pausedAt=Date.now();r.paused=true;stopAll();suspendTransport();armFinish();releaseWake();updateMediaControls(true);syncMediaPanel(true);render();return Promise.resolve();}
+ r.wallStartedAt+=Date.now()-r.pausedAt;r.paused=false;r.audioInterrupted=false;armFinish();requestWake();
+ if(r.musicPaused){updateMediaControls(true);syncMediaPanel(true);render();return Promise.resolve();}
+ r.musicPaused=true;return setMusicPaused(false);
 }
-function onVisibility(){if(document.visibilityState!=='hidden'){recoverAudio();requestWake();}else releaseWake();render();}
+function onVisibility(){if(document.visibilityState!=='hidden'){if(run?.musicResuming)setMusicPaused(false,true);else recoverAudio();requestWake();}else releaseWake();render();}
 function render(){
  document.body.dataset.musicPaused=String(Boolean(run?.musicPaused));syncMediaPanel();syncMusicButton();if(!run||!ctx)return;const t=runTime(),r=run;
  if(keepCounting&&r.musicPaused&&!r.paused&&t>=r.deadline)attemptFinishSound();
@@ -310,9 +331,9 @@ function render(){
   else if(t<r.closing){key=t<r.ambienceStart?'intro':'ambience';status='IN SESSION';sub='ONE THING AT A TIME';playing=t<r.origin+buffers.intro.duration?'Opening ticks + ambience':'The Vault · Ambience';setText(ui.hint,'Stay a little longer. Keep your focus.');}
   else if(t<r.deadline){key='closing';status='LOW TIME';sub='THE FINAL STRETCH';playing=t>=r.cutscene?'Low time + final scene':'The Vault · Low time';setText(ui.hint,'You’re almost there.');}
   else{key='cutscene';status='COMPLETE';sub='YOU MADE IT';playing='The final scene';setText(ui.hint,'Take a breath.');}
-   ui.pause.disabled=changingTimer||mediaMode()!=='timer';ui.reset.disabled=mediaMode()==='ending';ui.pause.textContent=r.paused?'RESUME TIMER':'PAUSE TIMER';stage(key);setText(ui.status,r.paused?'TIMER PAUSED':r.musicPaused?'TIMER RUNNING':status);setText(ui.sub,r.paused?'TAKE YOUR TIME':sub);setText(ui.timer,fmt(Math.min(r.total,Math.max(0,r.deadline-t))));setText(ui.nowPlaying,r.musicPaused?'Music paused · Countdown continues':playing);const percent=clamp((r.deadline-t)/r.total*100,0,100);const barWidth=(Math.round(percent*10)/10)+'%';if(ui.bar.style.width!==barWidth)ui.bar.style.width=barWidth;ui.bar.parentElement.setAttribute('aria-valuenow',String(Math.round(percent)));setPageTitle((liveMediaTitle?ui.timer.textContent:fmt(r.total)+' timer')+' · '+APP_NAME);
+   ui.pause.disabled=changingTimer||mediaMode()!=='timer';ui.reset.disabled=mediaMode()==='ending';ui.pause.textContent=r.paused?'RESUME TIMER':'PAUSE TIMER';stage(key);setText(ui.status,r.paused?'TIMER PAUSED':r.musicPaused?'TIMER RUNNING':status);setText(ui.sub,r.paused?'TAKE YOUR TIME':sub);setText(ui.timer,fmt(Math.min(r.total,Math.max(0,r.deadline-t))));setText(ui.nowPlaying,r.musicResuming?'Resuming music · Countdown continues':r.musicPaused?'Music paused · Countdown continues':playing);const percent=clamp((r.deadline-t)/r.total*100,0,100);const barWidth=(Math.round(percent*10)/10)+'%';if(ui.bar.style.width!==barWidth)ui.bar.style.width=barWidth;ui.bar.parentElement.setAttribute('aria-valuenow',String(Math.round(percent)));setPageTitle((liveMediaTitle?ui.timer.textContent:fmt(r.total)+' timer')+' · '+APP_NAME);
  }
- ui.resumeAudio.hidden=setupPaused||r.paused||(!r.musicPaused&&ctx.state==='running'&&!player.paused);setText(ui.resumeAudio,r.musicPaused?'RESUME MUSIC':'RECONNECT AUDIO');if(!ui.resumeAudio.hidden)setText(ui.hint,'The timer keeps counting. Resume music whenever you like.');
+ ui.resumeAudio.hidden=setupPaused||r.paused||(!r.musicPaused&&ctx.state==='running'&&!player.paused);setText(ui.resumeAudio,r.musicResuming?'RETRY MUSIC':r.musicPaused?'RESUME MUSIC':'RECONNECT AUDIO');if(!ui.resumeAudio.hidden)setText(ui.hint,r.musicResuming?'Resuming music. The timer keeps counting.':'The timer keeps counting. Resume music whenever you like.');
 }
 setInterval(render,100);setInterval(watchdog,1500);document.addEventListener('visibilitychange',onVisibility);window.addEventListener('pageshow',onVisibility);window.addEventListener('focus',onVisibility);document.addEventListener('pointerdown',()=>{if(ctx&&!run?.paused&&!run?.musicPaused&&(ctx.state!=='running'||player.paused))recoverAudio();});
 if(navigator.mediaDevices?.addEventListener)navigator.mediaDevices.addEventListener('devicechange',()=>recoverAudio(true));

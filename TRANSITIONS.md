@@ -15,10 +15,11 @@ Let D be the countdown deadline:
 | Ending begins at original source position 0 | D − 7 seconds |
 | Low-time ends, ending source position 7 | D |
 | Setup returns at ending source position 17 | D + 10 seconds |
-| Audible ending finishes at source position 31.67 | D + 24.67 seconds |
+| Ending fades from original source position 15 to 17 | D + 8 through D + 10 seconds |
+| Audible ending finishes at source position 17 | D + 10 seconds |
 | Original R.I.P. loop returns | At ending finish, fading in over 1.6 seconds |
 
-All ending cues use the original uploaded recording's timestamps, including its quiet opening. Only trailing silent padding beyond source position 31.67 is omitted. Internal pauses remain intact.
+All ending cues use the original uploaded recording's timestamps, including its quiet opening. The ending fades linearly from full gain at original position 15 to zero at 17; all later audio is omitted. Internal pauses before that point remain intact. Zero still coincides with original position 7, and setup/R.I.P. return at position 17.
 
 # Gain and looping
 
@@ -53,6 +54,8 @@ An original 5×7-grid pixel alphabet is embedded as WOFF. The timer uses its con
 The angular bronze casing and inset glass use CSS polygons, borders and shadows. The terminal fills portrait screens, and a compact landscape grid keeps controls beside the timer. The settings drawer scrolls within short viewports. Low-opacity scanlines, a slow sweep, cursor blink and startup animation respect reduced-motion preferences.
 
 Keep-counting mode stops scheduled audio and suspends the audio context while the wall clock continues. The watchdog respects this state. Resume music rebuilds the score at the current virtual time. Pause timer excludes its deliberate pause from the wall clock and preserves whether music was already silent. A timeout plus render/watchdog checks attempt the ending at zero; iOS suspension may delay that attempt. A late wake after the complete ending schedules a short cue from source position 7, then R.I.P., without altering timer zero. Playback rejection leaves a manual Resume music action and is not retried continuously. This remains an in-memory web timer, not a guaranteed OS alarm.
+
+Pause publishes its state and metadata immediately, without awaiting context suspension. Explicit native Play calls resume() and play() synchronously in the same callback, even if the browser's state flags appear healthy. Playback is confirmed by a playing event or fulfilled play promise together with an actually running context; an unresolved resume promise does not block observed success. A newer command cancels the previous activation instead of waiting in a promise queue. A stale element pause event cannot undo a newer Play (and vice versa). Temporary resume status stays paused until playback is confirmed. AudioSession state changes supplement element/context interruption events where supported. iOS may still impose platform restrictions; WebKit tracks background resume issues at https://bugs.webkit.org/show_bug.cgi?id=281566.
 
 # Performance build and media titles
 
