@@ -24,7 +24,7 @@ All non-R.I.P. tracks have unity track gain outside their fades. R.I.P. has 0.22
 
 Intro gain is unity until original position 21.54, then decreases linearly over 5.26 seconds to zero at 26.80. This lowers each successive tick instead of ending them abruptly. Recovery into the middle of this fade calculates the corresponding gain.
 
-Ambience has a six-second tail/head overlap normalized for channel correlation. It and low-time music overlap for six seconds with power fades. The ending starts early underneath the low-time tail, preserving original position 7 at zero.
+Ambience repeats the original decoded recording at its full approximately 88.615-second duration, using AudioBufferSourceNode.loop exactly like R.I.P. No samples are rearranged and no gain changes occur at loop boundaries. The former six-second tail/head remix has been removed because it produced an audible volume swell/dip on each repeat. Its one-time entrance fade remains; ambience and low-time music still overlap for six seconds with power fades. The ending starts early underneath the low-time tail, preserving original position 7 at zero.
 
 # Controls and recovery
 
