@@ -1,8 +1,10 @@
 from pathlib import Path
 from datetime import datetime,timezone
+from urllib.parse import urlsplit
 import re,base64,json,hashlib
 root=Path(__file__).resolve().parent
 url='https://h4sw5q2wr9-byte.github.io/candy-vault-timer/'
+app_path=urlsplit(url).path
 manifest=json.loads((root/'audio-manifest.json').read_text())
 for info in manifest.values():
  assert hashlib.sha256((root/info['src']).read_bytes()).hexdigest()==info['sha256'],'Audio asset changed without updating its verified manifest'
@@ -16,7 +18,9 @@ def versioned_icon(name):return './'+name+'?v='+hashlib.sha256((root/name).read_
 # the site again. Keep the conventional filename as a compatibility fallback.
 touch_name='apple-touch-icon-'+hashlib.sha256((root/'apple-touch-icon.png').read_bytes()).hexdigest()[:12]+'.png'
 (root/touch_name).write_bytes((root/'apple-touch-icon.png').read_bytes())
-web_manifest=json.dumps({'id':'./','name':'The Candy Vault Timer','short_name':'The Candy Vault Timer','description':'An unofficial DOORS-inspired music and focus timer.','start_url':'./','scope':'./','display':'standalone','background_color':'#1d181b','theme_color':'#20100b','icons':[{'src':versioned_icon('media-artwork-192.png'),'sizes':'192x192','type':'image/png','purpose':'any'},{'src':versioned_icon('media-artwork.png'),'sizes':'512x512','type':'image/png','purpose':'any'}]},indent=2)+'\n'
+# Keep the resolved identity of existing installs, while making the project
+# boundary explicit on this shared GitHub Pages origin. Never use '/' here.
+web_manifest=json.dumps({'id':app_path,'name':'The Candy Vault Timer','short_name':'The Candy Vault Timer','description':'An unofficial DOORS-inspired music and focus timer.','start_url':app_path,'scope':app_path,'launch_handler':{'client_mode':'focus-existing'},'display':'standalone','background_color':'#1d181b','theme_color':'#20100b','icons':[{'src':versioned_icon('media-artwork-192.png'),'sizes':'192x192','type':'image/png','purpose':'any'},{'src':versioned_icon('media-artwork.png'),'sizes':'512x512','type':'image/png','purpose':'any'}]},indent=2)+'\n'
 manifest_url='./manifest.webmanifest?v='+hashlib.sha256(web_manifest.encode()).hexdigest()[:12]
 def page(standalone=False):
  assets={key:base64.b64encode((root/info['src']).read_bytes()).decode() if standalone else {'src':info['src']+'?v='+info['sha256'][:12]} for key,info in manifest.items()}

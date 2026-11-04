@@ -1,10 +1,13 @@
 {
-  "id": "./",
+  "id": "/candy-vault-timer/",
   "name": "The Candy Vault Timer",
   "short_name": "The Candy Vault Timer",
   "description": "An unofficial DOORS-inspired music and focus timer.",
-  "start_url": "./",
-  "scope": "./",
+  "start_url": "/candy-vault-timer/",
+  "scope": "/candy-vault-timer/",
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
   "display": "standalone",
   "background_color": "#1d181b",
   "theme_color": "#20100b",

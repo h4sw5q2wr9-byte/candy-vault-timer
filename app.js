@@ -1,6 +1,9 @@
 'use strict';
 const $=id=>document.getElementById(id);
 const APP_NAME='The Candy Vault Timer';
+// Supported browsers can reopen this running window without navigating away
+// from its in-memory timer. iOS chooses the Now Playing launch app itself.
+if(window.launchQueue?.setConsumer)window.launchQueue.setConsumer(()=>window.focus());
 let liveMediaTitle=true;try{liveMediaTitle=localStorage.getItem('candyVault.liveMediaTitle')!=='false';}catch{}
 let keepCounting=true;try{keepCounting=localStorage.getItem('candyVault.keepCounting')!=='false';}catch{}
 let finishWake=null,musicTask=Promise.resolve(),changingTimer=false,transportStarting=false,musicGeneration=0,cancelActivation=null;
